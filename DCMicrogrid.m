@@ -1,0 +1,637 @@
+classdef DCMicrogrid < handle
+    % Holds arrays of DGs and TransmissionLines; simulates and draws
+    properties
+        DGs
+        Lines
+        N  (1,1) double
+        M  (1,1) double
+        G                 % NxN conductance Laplacian (diag=sum g_ij, offdiag=-g_ij)
+
+        A           % (2N x 2N)
+        BBar        % (2N x 2N)
+        E           % (2N x  N)
+        B           % (2N x  N)
+        D           % (2N x 2N)   % picks vC per node
+        DBar           % (2N x 2N)   % picks iL per node
+        
+       
+        u_s         % (N x 1)
+        wBar        % (N x 1)
+
+        % --- Admittance matrices from line resistances ---
+        Y       % (N x N)  off-diagonal admittances, diagonal = 0
+        YBar    % (N x N)  Laplacian of admittances (diag=sum, offdiag = -Y)   
+
+        x_s % steady-state
+        K_L % Strict local controller gains
+        K           % (N  x 2N)
+        commAdj % Adjacencuy matrix of the com topology
+
+
+        % Integral action
+        z           % (2N x 1) integrator state
+        K_I         % (N x 4N) integral gain
+
+    end
+
+    methods
+        
+        function obj = DCMicrogrid(DG_array, Line_array)
+
+            obj.DGs   = DG_array(:).';    % row
+            obj.Lines = Line_array(:).';
+
+            obj.N = numel(obj.DGs); 
+            obj.M = numel(obj.Lines);
+
+            obj.buildConductance();
+
+            for k = 1:obj.N
+                obj.DGs(k).updateModel();
+            end
+
+        end
+
+        % buildConductance: keep your Y, YBar, but don't push gsum into DGs anymore
+        function buildConductance(obj)
+            N = obj.N;  Y = zeros(N); YBar = zeros(N);
+            for e = 1:obj.M
+                i = obj.Lines(e).i; 
+                j = obj.Lines(e).j; 
+                g = obj.Lines(e).g;
+                Y(i,j) = g; 
+                Y(j,i) = g;
+                
+                YBar(i,j) = -g; 
+                YBar(j,i) = -g;
+
+                YBar(i,i) = YBar(i,i)+g; 
+                YBar(j,j) = YBar(j,j)+g;
+            end
+            obj.Y = Y; 
+            obj.YBar = YBar; 
+
+            for i = 1:1:N
+                obj.DGs(i).YBar = YBar(i,i);
+            end
+        end
+
+
+        function X = getStateVector(obj)
+            % Stack [vC1 iL1 vC2 iL2 ...]'
+            X = zeros(2*obj.N,1);
+            for k = 1:obj.N
+                X(2*k-1:2*k) = obj.DGs(k).getState();
+            end
+        end
+
+        function setStateVector(obj, X)
+            for k = 1:obj.N
+                obj.DGs(k).setState(X(2*k-1:2*k));
+            end
+        end
+
+        
+        function dXi = dynamics(obj, t, Xi)
+            % If UseIntegral=false, Xi = X (2N x 1)
+            % If UseIntegral=true,  Xi = [X; z] (3N x 1)
+            N  = obj.N;
+            X = Xi; 
+            z = [];
+            
+            obj.setStateVector(X);
+        
+            % Electrical injections
+            V = obj.D'*X;
+            Iline = obj.YBar * V;
+        
+            % Error);
+            e = X - obj.x_s;
+        
+            % Feedback
+            u_fb = obj.K*e; 
+            u = u_fb;
+        
+            % Plant derivatives DG-by-DG with controller-provided u_i
+            dX = zeros(2*N,1);
+            for i = 1:N
+                dxi = obj.DGs(i).f(t, Iline(i), u(i));
+                dX(2*i-1:2*i) = dxi;
+            end
+            dXi = dX;
+
+        end
+
+        function enableIntegral(obj, tf)
+            if nargin<2
+                tf=true; 
+            end
+            
+            obj.UseIntegral = tf;
+            
+            if tf && (isempty(obj.z) || numel(obj.z)~=obj.N)
+                obj.z = zeros(2*obj.N,1);
+            end
+
+        end
+
+
+        function [t, X] = simulate(obj, tspan, x0)
+            ode_opts = odeset('RelTol',1e-6,'AbsTol',1e-6);
+            f = @(t,x) obj.dynamics(t,x);
+            [t, X] = ode45(f, tspan, x0, ode_opts);
+        end
+
+        function draw(obj, ax)
+
+            if nargin < 2 || isempty(ax), ax = gca; end
+            cla(ax); hold(ax, 'on'); axis(ax, 'equal');
+
+            obj.drawComm(ax);
+
+            % Lines first
+            for e = 1:obj.M
+                i = obj.Lines(e).i; j = obj.Lines(e).j;
+                obj.Lines(e).draw(ax, obj.DGs(i).pos, obj.DGs(j).pos);
+            end
+            % DGs on top
+            for k = 1:obj.N
+                obj.DGs(k).draw(ax);
+            end
+            grid(ax, 'on'); xlabel(ax,'x'); ylabel(ax,'y');
+            title(ax, 'DC Microgrid Topology');
+            set(ax,'Visible','off') 
+
+        end
+
+        function drawComm(obj, ax, varargin)
+            % Draw dashed lines for nonzero 1x2 blocks in K (thresholded).
+            if nargin < 2 || isempty(ax), ax = gca; end
+            if isempty(obj.K), return; end
+            N = obj.N; K = obj.K; tol = 1e-12;
+            hold(ax, 'on');
+            for i = 1:N
+                for j = 1:N
+                    blk = K(i, 2*j-1:2*j);
+                    if norm(blk,2) > tol && i ~= j
+                         
+                        pi = obj.DGs(i).pos; 
+                        pj = obj.DGs(j).pos;
+                        
+                        % Perpendicular midpoint bulge
+                        dline = (pj - pi)/norm(pj - pi);
+                        dperp = [dline(2) - dline(1)];
+                        
+                        bulge = 0.4;
+                        pm = (0.5*pi + 0.5*pj) + bulge * dperp;
+                        
+                        % ----- Quadratic Bézier -----
+                        num_points = 200;
+                        t = linspace(0, 1, num_points)';
+                        B = (1 - t).^2 .* pi + 2*(1 - t).*t .* pm + t.^2 .* pj;
+                        
+                        x_curve = B(:,1);
+                        y_curve = B(:,2);
+                        
+                        % Plot curve
+                        plot(ax, x_curve, y_curve, '--', ...
+                            'Color', [0.1 0.5 1.0], 'LineWidth', 0.8);
+                        hold(ax, 'on');
+                        
+                        % ----- Arrowhead at MIDDLE of curve -----
+                        tm = 0.5;   % midpoint along Bezier
+                        
+                        % Position on curve at t = 0.5
+                        P = (1 - tm)^2 * pi + 2*(1 - tm)*tm * pm + tm^2 * pj;
+                        
+                        % Tangent direction on quadratic Bezier:
+                        
+                        % Arrowhead size (scale with edge length)
+                        arrow_len = 0.1;
+                        arrow_wid = 0.05;
+                        
+                        % Triangle vertices (tip at P)
+                        tip     = P;
+                        leftpt  = P - arrow_len*dline + arrow_wid*dperp;
+                        rightpt = P - arrow_len*dline - arrow_wid*dperp;
+                        
+                        % Draw triangle arrowhead
+                        patch(ax, [tip(1) leftpt(1) rightpt(1)], ...
+                                  [tip(2) leftpt(2) rightpt(2)], ...
+                                  [0.1 0.5 1.0], ...
+                                  'EdgeColor', 'none');
+
+
+                        
+                    end
+                end
+            end
+        end
+
+
+
+        function buildSystemMatrices(obj)
+            N = obj.N;
+
+            Ablk   = cell(1,N);
+            Eblk   = cell(1,N);
+            Bblk   = cell(1,N);
+            BBarblk   = cell(1,N);
+            Dblk   = cell(1,N);
+            DBarblk   = cell(1,N);
+
+            obj.u_s  = zeros(N,1);
+            obj.wBar = zeros(N,1);
+
+            for i = 1:N
+                Ai = obj.DGs(i).A;
+                Ei = obj.DGs(i).E;   % (2x1)
+                Bi = obj.DGs(i).B;   % (2x1)
+
+                Ablk{i}   = Ai;
+                Eblk{i}   = Ei;
+                Bblk{i}   = Bi;
+                BBarblk{i}   = [Ei, Bi];
+                Dblk{i}   = [1; 0];  % vC selector
+                DBarblk{i}   = [0; 1];  % iL selector
+
+                obj.u_s(i)  = obj.DGs(i).u_s;
+                obj.wBar(i) = obj.DGs(i).Ibar;
+            end
+
+            obj.A    = blkdiag(Ablk{:});
+            obj.E    = blkdiag(Eblk{:});
+            obj.B    = blkdiag(Bblk{:});
+            obj.BBar = blkdiag(BBarblk{:});
+            obj.D    = blkdiag(Dblk{:});
+            obj.DBar    = blkdiag(DBarblk{:});
+
+        end
+
+
+        function ss = solveSteadyState(obj, opts)
+            % Solve steady state including epsilon matrices:
+            %   A x_ss + E I_ss + B u_ss + E wBar = 0
+            %   V_ss = diag(epsV) * V_rated
+            %   I_ss = epsI * I_rated             % equal current sharing (scalar epsI)
+            %
+            % Minimizes  wV*||epsV-1||^2 + wI*(epsI-1)^2 + wu*||u-us_prev||^2
+            % with optional bounds on epsV and epsI.
+            %
+            % Requires YALMIP + MOSEK.
+            
+            arguments
+                obj
+                opts.wV (1,1) double = 1.0
+                opts.wI (1,1) double = 1.0
+                opts.wu (1,1) double = 1e-3
+                opts.deltaV (1,1) double = 0.10   % |epsV_i-1| <= deltaV
+                opts.deltaI (1,1) double = 0.10   % |epsI-1| <= deltaI
+                opts.set_state (1,1) logical = true
+                opts.set_us    (1,1) logical = true
+            end
+        
+            obj.buildSystemMatrices();
+            N    = obj.N;    
+            nX   = 2*N;
+        
+            % Gather ratings from DGs
+            Vr = zeros(N,1); 
+            Ir = zeros(N,1);
+            for i = 1:N
+                Vr(i) = obj.DGs(i).Vrated;
+                Ir(i) = obj.DGs(i).Irated;
+            end
+        
+            % Plant
+            Am = obj.A;
+            Bm = obj.B;   
+            Em = obj.E;
+
+            wBar = obj.wBar; 
+            D = obj.D; 
+            DBar = obj.DBar;
+            YBar = obj.YBar;
+        
+            % Decision vars
+            x = sdpvar(nX,1);
+
+
+            u = sdpvar(N,1); % Second component of u_E
+            I = sdpvar(N,1); % First compoenent of u_E
+            epsV = sdpvar(N,1);           % diagonal entries of Sigma_V
+            epsI = sdpvar(1,1);           % equal-sharing scalar
+        
+            % Selections
+            V = D'*x; 
+            I_t = DBar'*x; 
+            
+            % Relations to ratings
+            constr = [];
+            constr = [constr, V == diag(epsV) * Vr];   % voltage regulation
+            constr = [constr, I_t == epsI * Ir];       % equal current sharing
+        
+            % Physics at steady state
+            constr = [constr, Am*x + [Em Bm]*[I; u] + Em*wBar == 0];
+            constr = [constr, I == YBar*V];
+        
+            % Epsilon bounds
+            constr = [constr, epsV >= 0.9, epsV <= 1.1];
+            constr = [constr, epsI >= 0, epsI <= 0.9];
+        
+            % Mild input regularization
+            % us_prev = mats.u_s; if isempty(us_prev), us_prev = zeros(N,1); end
+        
+            objFun = 1*norm(epsV - 1, 2)^2 + epsI;
+        
+            ops = sdpsettings('solver','mosek','verbose',0);
+            info = optimize(constr, objFun, ops);
+        
+            ss = struct();
+            ss.problem = info.problem;
+            ss.info    = yalmiperror(info.problem);
+            ss.x_ss    = value(x);
+            ss.u_s     = value(u);
+            ss.epsV    = value(epsV);
+            ss.epsI    = value(epsI);
+            ss.V_ss    = value(V);
+            ss.I_tss    = value(I_t);
+            ss.I_ss    = value(I);
+        
+            if info.problem ~= 0
+                warning('SS eps-solve: %s', ss.info);
+                return;
+            end
+        
+            % Push solution to plant (optional)
+            if opts.set_us
+                obj.u_s = ss.u_s;
+                obj.x_s = ss.x_ss;
+                obj.z   = zeros(obj.N,1);   % start integrators at 0 error
+                for k = 1:N
+                    obj.DGs(k).u_s = ss.u_s(k);
+                    obj.DGs(k).x_s = ss.x_ss(2*(k-1)+1:2*k);
+                    obj.DGs(k).I_s = ss.I_ss(k);
+                end
+            end
+
+        end
+
+        function out = designKFree(obj, opts)
+        % Design a dense K (N x 2N) s.t. A + B K is Hurwitz (continuous-time).
+        % No sparsity constraints; we infer comm graph from K afterward.
+            arguments
+                obj
+                opts.alpha   (1,1) double = 10   % decay margin
+                opts.verbose (1,1) double = 1
+            end
+            obj.buildSystemMatrices();   % A: 2N×2N (blkdiag A_i), B: 2N×N (blkdiag B_i)
+
+            A = obj.A;  
+            BBar = obj.BBar;
+            YBar = obj.YBar;
+            DBar = obj.DBar;
+            D = obj.D;
+
+            N = obj.N;  
+            nX = 2*N;
+        
+            % Decision vars
+            P = sdpvar(nX,nX,'symmetric');
+            L = sdpvar(2*N, 2*N,'full');        % Y = K*P
+            epsilon = sdpvar(1,1,'full');
+
+            cons = [P >= epsilon*eye(nX), epsilon >= 0.001];
+            W = - (A*P + BBar*L)' - (A*P + BBar*L);
+            cons = [cons, W >= epsilon*eye(size(W))]; % -2*opts.alpha*P
+            cons = [cons, D'*L == YBar*D'*P]
+        
+            costFun = epsilon + trace(P);
+
+            ops = sdpsettings('solver','mosek','verbose',opts.verbose);
+            sol = optimize(cons, costFun, ops);
+        
+            out.problem = sol.problem;
+            out.info    = yalmiperror(sol.problem);
+            out.P       = value(P);
+            out.L       = value(L);
+            if sol.problem==0
+                K = out.L / out.P           % K = Y * P^{-1}
+                obj.K_L = zeros(N,2*N);   % strictly local component off for this test
+                obj.K = DBar'*K              % store full K
+
+                eig(A + BBar*K)
+            end
+
+        end
+
+
+                
+        function Adj = buildCommAdjFromK(obj, thr)
+        % Build an undirected adjacency by thresholding 1x2 block norms of K.
+            N = obj.N; 
+            Adj = zeros(N);
+            K = obj.K;
+            maxK = max(max(abs(K)));
+            for i = 1:N
+                for j = 1:N
+                    K_ij = K(i, 2*j-1:2*j);
+                    if norm(K_ij,2) >= thr*maxK
+                        Adj(i,j) = 1;
+                    else
+                        K(i, 2*j-1:2*j) = [0, 0];
+                    end
+                end
+            end
+            obj.K = K;
+            obj.commAdj = Adj;
+        end
+
+
+
+        function out = designLocalK(obj)
+        % Run local dissipativity on each DG;
+            out = [];
+            for i = 1:obj.N
+                oi = obj.DGs(i).designLocalXiDissipative();
+                if oi.problem~=0
+                    warning('Local design failed at DG %d: %s', i, oi.info);
+                else
+                    % disp(["K,nu,rho at i = ",num2str(i)])
+                    out = [out; oi.K];
+                    % oi.nu
+                    % oi.rho
+                end
+            end
+        end
+        
+
+        function glob = designGlobalDistributedK(obj) 
+            
+            obj.buildSystemMatrices();
+
+            YBar = obj.YBar;
+            YBar = YBar - 0*diag(diag(YBar))
+            BBar = obj.BBar;
+            N = obj.N; 
+            D = obj.D;
+            DBar = obj.DBar;
+        
+            % Whether to use a soft or hard graph constraint
+            isSoft = 1;
+            normType = 1;
+            maxCostVal = 0.001;
+            minCostVal = 0.001;
+
+            % Creating the adgacency matrix, null matrix and cost matrix
+            AdjMat = ones(N,N); 
+           
+            % Set up the LMI problem
+            solverOptions = sdpsettings('solver','mosek','verbose',1);
+            I = eye(2*N);
+            I_n = eye(2);
+            O = zeros(2*N);
+
+            % Variables
+            K = sdpvar(2*N, 2*N,'full'); 
+            P = sdpvar(N, N, 'diagonal');
+            gammaSq = sdpvar(1, 1, 'full');
+            epsilon = sdpvar(1);    
+
+            X_p_11 = [];
+            X_11 = [];
+            X_p_12 = [];
+            X_12 = [];
+            X_p_22 = [];
+            for i = 1:1:N
+                nu_i = obj.DGs(i).nu;
+                rho_i = obj.DGs(i).rho;
+            
+                X_p_11 = blkdiag(X_p_11, -nu_i*P(i,i)*I_n);
+                X_11 = blkdiag(X_11, -nu_i*I_n);
+                X_p_12 = blkdiag(X_p_12, 0.5*P(i,i)*I_n);
+                X_12 = blkdiag(X_12, (-1/(2*nu_i))*I_n);
+                X_p_22 = blkdiag(X_p_22, -rho_i*P(i,i)*I_n);
+            end
+            X_p_21 = X_p_12';
+            X_21 = X_12';
+            
+            costMat = [];
+            for i = 1:1:N
+                costMatRow = [];
+                for j = 1:1:N
+                    dist_ij = norm(obj.DGs(i).pos-obj.DGs(j).pos);
+                    if dist_ij==0
+                        dist_ij = 0.001;  %%%% Key parameter
+                    end
+                    costMatRow = [costMatRow, dist_ij*ones(2)];
+                end
+                costMat = [costMat; costMatRow];
+            end
+            costMat = costMat;
+
+            % Objective Function
+            % costFun = 1*norm(Q.*costMatBlock,normType);
+            KMat1 = DBar'*(K.*costMat)*D;
+            KMat2 = DBar'*(K.*costMat)*DBar;
+            KMat = KMat1 + KMat2;
+            % costFun00 = sum(sum(KMat));
+            costFun0 = norm(KMat,normType);
+
+            % Minimum Budget Constraints
+            con0 = [];
+            % con0 = [con0, costFun00 >= minCostVal];
+            con0 = [con0, costFun0 <= maxCostVal];
+           
+                        
+            % Basic Constraints
+            con1 = [P >= epsilon*eye(N)];
+
+            %% Since: 
+            % KBar = D*K + DBar*YBar*D';
+            % L_uy = X_p_11*(BBar * KBar);
+            %% We have with KHat = X_p_11*BBar*D*K = (struct of DK)
+            L_uy = X_11*BBar*K;
+
+            DMat = [X_p_11, O; O, I];
+            MMat = [L_uy, X_p_11; I, O];
+            ThetaMat = [- X_21*L_uy - L_uy'*X_12 - X_p_22, - X_p_21; - X_p_12, gammaSq*I];
+            W = [DMat, MMat; MMat', ThetaMat];
+            con2 = W >= epsilon*eye(size(W)); % The real one
+
+            con3 = D'*K == P*YBar*D';
+                        
+            % Total Cost and Constraints
+            if isSoft
+                cons = [con0, con1, con2, con3]; % Without the hard graph constraint con7
+                costFun = 1*costFun0 + 1e6*gammaSq + 1*trace(P) - 1e12*epsilon; % soft 
+            else
+                cons = [con0, con1, con2, con3]; % With the hard graph constraint con7
+                costFun = 1*costFun0 + 1*gammaSq + 1*trace(P); % hard (same as soft)
+            end
+            
+            sol = optimize(cons, costFun, solverOptions);
+            status = sol.problem == 0; %sol.info;
+            if sol.problem ~= 0
+                warning('Global Design Fail: %s', sol.info);
+                return;
+            else
+                disp('Global Design Success!'); 
+                
+            end
+
+            PVal = value(P)
+            KVal = value(K)
+            costFun0Val = value(costFun0)
+            gammaSqVal = value(gammaSq)
+            traceVal = trace(PVal)
+            % RBarVal = PVal \ D'*KVal*D
+            % YBar
+            Phyerr = norm(value(D'*K*D - P*YBar)) 
+            
+
+            % M = BBar K = value(X_p_11)\L_uyVal; % DK value
+            % K1 = (BBar*value(X_p_11))\L_uyVal
+            
+            KBarVal = PVal \ DBar'*KVal
+
+            % % Obtaining K_ij blocks
+            % M_neVal(nullMatBlock==1) = 0;
+            % maxNorm = 0;
+            % for i = 1:1:N
+            %     for j = 1:1:N
+            %         K{i,j} = M_neVal(3*(i-1)+1:3*i , 3*(j-1)+1:3*j); % (i,j)-th (3 x 3) block
+            %         normVal = max(max(abs(K{i,j})));
+            %         if normVal>maxNorm 
+            %             maxNorm = normVal;
+            %         end
+            %     end
+            % end
+            % 
+            % % filtering out extremely small interconnections
+            % for i=1:1:N
+            %     for j=1:1:N
+            %         if i~=j
+            %             if isSoft
+            %                 K{i,j}(abs(K{i,j})<0.0001*maxNorm) = 0;                       
+            %             else
+            %                 if AdjMat(j+1,i+1)==0
+            %                     K{i,j} = zeros(3);
+            %                 end
+            %             end
+            %         end
+            % 
+            %         K_ijMax = max(abs(K{i,j}(:)));
+            %         K{i,j}(abs(K{i,j})<0.01*K_ijMax) = 0;
+            % 
+            %     end
+            % end
+      
+            obj.K = KBarVal;
+            % obj.loadTopologyFromK2(K);
+            % obj.loadControllerGains2(K);
+
+        end
+
+    end
+end
