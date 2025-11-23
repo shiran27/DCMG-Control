@@ -875,7 +875,7 @@ classdef DCMicrogrid < handle
             W = - (A*P + BBar*L)' - (A*P + BBar*L);
             cons = [cons, W >= epsilon*eye(size(W))]; % -2*opts.alpha*P
             % cons = [cons, W >= 2*eps*P]; % 2*opts.alpha*P
-            cons = [cons, 1e6*(D'*L - YBar*D'*P)==zeros(size(D'*L))];
+            cons = [cons, 1*(D'*L - YBar*D'*P)==zeros(size(D'*L))];
         
             costFun = epsilon + trace(P);
 
@@ -1021,7 +1021,7 @@ classdef DCMicrogrid < handle
                 for j = 1:1:N
                     dist_ij = norm(obj.DGs(i).pos-obj.DGs(j).pos);
                     if dist_ij==0
-                        dist_ij = 0.001;  %%%% Key parameter
+                        dist_ij = 0.001;  %%%% Key point check
                     end
                     costMatRow = [costMatRow, dist_ij*ones(2)];
                 end
@@ -1040,7 +1040,7 @@ classdef DCMicrogrid < handle
             % Minimum Budget Constraints
             con0 = [];
             % con0 = [con0, costFun00 >= minCostVal];
-            con0 = [con0, costFun0 <= maxCostVal, gammaSq >= 0 ];
+            con0 = [con0, costFun0 <= maxCostVal, gammaSq >= 0.001];
            
                         
             % Basic Constraints
@@ -1058,12 +1058,12 @@ classdef DCMicrogrid < handle
             W = [DMat, MMat; MMat', ThetaMat];
             con2 = W >= epsilon*eye(size(W)); % The real one
 
-            con3 = D'*K == P*YBar*D';
+            con3 = 1*(D'*K - P*YBar*D')==zeros(size(D'*K));
                         
             % Total Cost and Constraints
             if isSoft
                 cons = [con0, con1, con2, con3]; % Without the hard graph constraint con7
-                costFun = 1*costFun0 + 1e6*gammaSq + 1*trace(P) - 1e12*epsilon; % soft 
+                costFun = 1*costFun0 + 1*gammaSq + 1*trace(P) - 1e12*epsilon; % soft 
             else
                 cons = [con0, con1, con2, con3]; % With the hard graph constraint con7
                 costFun = 1*costFun0 + 1*gammaSq + 1*trace(P); % hard (same as soft)
@@ -1085,20 +1085,22 @@ classdef DCMicrogrid < handle
             end
         
             disp('Model-based DRC co-design SUCCESS!');
+            [k_crit, minor_crit, minors] = obj.criticalLeadingMinor(value(W))
 
             PVal        = value(P);
             KVal        = value(K);
             costFun0Val = value(costFun0);
             gammaSqVal  = value(gammaSq);
         
-            fprintf('   costFun0    = %.4e\n', costFun0Val);
-            fprintf('   gamma^2 (global)  = %.4e\n', gammaSqVal);
-            fprintf('   trace(P)          = %.4e\n', trace(PVal));
+            fprintf('epsilon    = %.4e\n', value(epsilon));
+            fprintf('||K||-weighted    = %.4e\n', costFun0Val);
+            fprintf('gamma^2 (global)  = %.4e\n', gammaSqVal);
+            fprintf('trace(P)          = %.4e\n', trace(PVal));
 
-
+            
             % Consistency of DᵀK = P Ȳ Dᵀ
-            phyErr = norm(value(D'*K - P*YBar*D')); 
-            fprintf('   phyLinkErrMag = %.4e\n', phyErr);
+            phyErr = norm(value(D'*K - P*YBar*D')) 
+            fprintf('||D''K - PȲD''|| = %.4e\n', phyErr);
             
             KBarVal = PVal \ DBar'*KVal
             obj.K = KBarVal;
@@ -1269,7 +1271,7 @@ classdef DCMicrogrid < handle
             cons = [];
         
             % Communication budget
-            cons = [cons, costFun0 <= maxCostVal, gammaSq >= 0]; %%%% check
+            cons = [cons, costFun0 <= maxCostVal, gammaSq >= 0.001]; %%%% check
         
             % Positivity / slacks 
             cons = [cons, P >= 0.001*eye(N), lambda >= 0];
@@ -1278,13 +1280,13 @@ classdef DCMicrogrid < handle
             cons = [cons, W >= epsilon*eye(size(W))];
         
             % Structural coupling constraint: DᵀK = P Ȳ Dᵀ
-            cons = [cons, D'*K == P*YBar*D']; %%%% check
+            cons = [cons, 1*(D'*K - P*YBar*D')==zeros(size(D'*K))]; %%%% check
         
             %--------------------------------------------------------------
             % Objective: sparse K, small gamma, small λ and P
             %--------------------------------------------------------------
             if isSoft
-                costFun = 1*costFun0 + 1e6*gammaSq + 1*trace(P) - 1e12*epsilon; %%%% check
+                costFun = 1*costFun0 + 1*gammaSq + 1*trace(P) - 1e12*epsilon; %%%% check
             else
                 % cons = [cons, ...]
                 % costFun = 1*costFun0 + 1*gammaSq + 1e3*lambda + 1*trace(P);
@@ -1309,7 +1311,7 @@ classdef DCMicrogrid < handle
         
             disp('Data-driven DRC co-design SUCCESS!');
         
-            [k_crit, minor_crit, minors] = obj.criticalLeadingMinor(value(W));
+            [k_crit, minor_crit, minors] = obj.criticalLeadingMinor(value(W))
 
             %--------------------------------------------------------------
             % Extract and store results
@@ -1320,14 +1322,16 @@ classdef DCMicrogrid < handle
             gammaSqVal  = value(gammaSq);
             lambdaVal   = value(lambda);
         
-            fprintf('   ||K||-weighted    = %.4e\n', costFun0Val);
-            fprintf('   gamma^2 (global)  = %.4e\n', gammaSqVal);
-            fprintf('   lambda (robust)   = %.4e\n', lambdaVal);
-            fprintf('   trace(P)          = %.4e\n', trace(PVal));
-        
+                    
+            fprintf('epsilon    = %.4e\n', value(epsilon));
+            fprintf('||K||-weighted    = %.4e\n', costFun0Val);
+            fprintf('gamma^2 (global)  = %.4e\n', gammaSqVal);
+            fprintf('trace(P)          = %.4e\n', trace(PVal));
+            fprintf('lambda (robust)   = %.4e\n', lambdaVal);
+
             % Consistency of DᵀK = P Ȳ Dᵀ
             phyErr = norm(value(D'*K - P*YBar*D'));
-            fprintf('   ||D''K - PȲD''|| = %.4e\n', phyErr);
+            fprintf('||D''K - PȲD''|| = %.4e\n', phyErr);
         
             % Recover K̄ as in model-based code
             KBarVal   = PVal \ (DBar'*KVal)
@@ -1347,7 +1351,9 @@ classdef DCMicrogrid < handle
         
             for k = 1:n
                 Mk = M(1:k, 1:k);
-                minors(k) = det(Mk);
+                kVal = k
+                detVal = det(Mk)
+                minors(k) = detVal;
             end
         
             [minor_crit, k_crit] = min(minors);
