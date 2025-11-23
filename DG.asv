@@ -63,7 +63,7 @@ classdef DG < handle
     end
 
     methods
-
+        
         function obj = DG(id, params)
             if nargin >= 1, obj.id = id; else, obj.id = 1; end
             if nargin >= 2 && ~isempty(params)
@@ -78,8 +78,8 @@ classdef DG < handle
         function updateModel(obj)
 
             % A,B,E for state order [vC; iL]
-            obj.A = [ -(1/(obj.RL*obj.C))       1/obj.C ; ...
-                        -1/obj.L             -obj.Rf/obj.L ];
+            obj.A = [ -(1/(obj.RL*obj.C))   1/obj.C ; ...
+                  -1/obj.L             -obj.Rf/obj.L ];
             obj.B = [0; 1/obj.L];
             obj.E = [-1/obj.C; 0];   % multiplies any current sink (Ibar, Iline, perturbation)
             obj.BBar = [obj.E, obj.B];
@@ -87,7 +87,6 @@ classdef DG < handle
         end
 
         function setState(obj, xnew), obj.x = xnew(:); end
-        
         function x = getState(obj),   x = obj.x;       end
 
         function dx = dynamics(obj, t, Iline, u_G, useData)
@@ -278,6 +277,8 @@ classdef DG < handle
             x21     = 0.5;
             x22     = sdpvar(1,1);
 
+            
+        
             % For the "necessary condition" LMI (same set as in Prop. 5 code)
             KTilde11 = sdpvar(m,n,'full');
             KHat21   = sdpvar(m,n,'full');
@@ -319,7 +320,6 @@ classdef DG < handle
             % ---------------------------------------------------------------------
             % LMI #2:  [Qi2  Si2;  Si2'  Ri2] >= 0  (necessary conditions, data–driven)
             % ---------------------------------------------------------------------
-            
             % Q_{i2}
             Qi2 = [ -yCheck22*I_n,      O_n;
                     O_n,               yTilde11*I_n ];
@@ -349,8 +349,7 @@ classdef DG < handle
             % Sign constraints from Proposition 7
             
             scalarCons = [x22 <= -epsilon(1,1), yHat22 <= -epsilon(2,2),...
-                          lambda1 >= 0, lambda2 >= 0, epsilon >= 1e-9*eye(size(epsilon)),...
-                          epsilon <= 1*eye(size(epsilon))]; %%%% check
+                            lambda1 >= 0, lambda2 >= 0, epsilon >= 1e-9*eye(size(epsilon))]; %%%% check
             
 
             % Physical Constraints:
@@ -373,7 +372,7 @@ classdef DG < handle
             ops = sdpsettings('solver','mosek','verbose',0,'showprogress',0);
         
             % Simple objective: favor "small" Xi, y-variables and multipliers
-            objective = 1*yTilde11 + 1*trace(XKhatSym) - 1*trace(epsilon) + 1*x22 + 1e3*xBar11; %%%% check
+            objective = 1*yTilde11 + 1*trace(XKhatSym) + 1*trace(epsilon) + 1*x22 + 1e3*xBar11; %%%% check
         
             sol = optimize(cons, objective, ops);
         
@@ -399,7 +398,7 @@ classdef DG < handle
             Ri1Val = value(Ri1);
 
             xBar11Val = value(xBar11); 
-            x22Val = value(x22);
+            x22Val = value(x22); 
             x11Val = (-x22Val)\xBar11Val;
             out.nu      = -x11Val;
             out.rho     = -x22Val;
