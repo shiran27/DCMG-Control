@@ -124,7 +124,6 @@ classdef DCMicrogrid < handle
             Xs = [];
             Us = [];
 
-
             % Get ready for Stage 1: Only for Data-Driven Co-Designed DRC
             if useData 
                 % A noisy version of Model-based design of a global stabilizing controller 
@@ -170,11 +169,11 @@ classdef DCMicrogrid < handle
             
             
             % Get ready for Stage 3: instantaneous State error
-            mag = 0.2;
+            mag = 0.1;
             for i = 1:obj.N
                 if rand(1)<0.5
                     X(end, 2*i-1:2*i) = X(end, 2*i-1:2*i) + ...
-                        X(end, 2*i-1:2*i).*(mag*(2*rand(1,2)-2));
+                        X(end, 2*i-1:2*i).*(mag*(2*[rand(1,1), 1] - 2));
                 end
             end
             
@@ -197,9 +196,9 @@ classdef DCMicrogrid < handle
             
             
             % Get ready for Stage 4: Heightened disturbance period 
-            mag = 100;
+            mag = 500;
             for i = 1:obj.N
-                tIndices = (obj.DGs(i).noise.t > t_3 & obj.DGs(i).noise.t < (0.8*t_3 + 0.2*t_4));
+                tIndices = (obj.DGs(i).noise.t > t_3 & obj.DGs(i).noise.t < (0.98*t_3 + 0.02*t_4));
                 obj.DGs(i).noise.w(tIndices,:) = mag*obj.DGs(i).noise.w(tIndices,:);
             end
 
@@ -222,14 +221,9 @@ classdef DCMicrogrid < handle
             
             
             % Get ready for Stage 5: Permenent model parameter variation
-            mag = 0.2;
-            % obj.A
+            mag = 0.4;
             for i = 1:obj.N
-                obj.DGs(i).A    = obj.DGs(i).A    + obj.DGs(i).A.*(mag*(2*rand(size(obj.DGs(i).A))-1));
-                % obj.DGs(i).B    = obj.DGs(i).B    + obj.DGs(i).B.*(mag*(2*rand(size(obj.DGs(i).B))-1));
-                % obj.DGs(i).B(1) = 0;
-                % obj.DGs(i).E    = obj.DGs(i).E    + obj.DGs(i).E.*(mag*(2*rand(size(obj.DGs(i).E))-1));
-                % obj.DGs(i).E(2) = 0;
+                obj.DGs(i).A    = obj.DGs(i).A + obj.DGs(i).A.*(mag*(2*rand(size(obj.DGs(i).A))-1));
                 obj.DGs(i).Ibar = obj.DGs(i).Ibar + obj.DGs(i).Ibar.*(mag*(2*rand(size(obj.DGs(i).Ibar))-1));
             end
            
@@ -264,7 +258,7 @@ classdef DCMicrogrid < handle
             % Get ready for Stage 6: Only Data-Driven Co-Designed DRC
             if useData
                 obj.loadDataMatrices(t5, X5, Xs5, Utilde5, Wtilde5);
-                [AdjMat, KMat, out] = obj.codesign_DD_DRC(linkFiltThresh);
+                [AdjMat, KMat, out] = obj.codesign_DD_DRC(linkFiltThresh); %%%% Check
             end
 
             disp('Starting Stage 6...')
@@ -288,17 +282,17 @@ classdef DCMicrogrid < handle
             % Get ready for Stage 7: In this final stage, for the parameter
             % changed system, additional state and disturbance noise impacts.
             % State noise:
-            mag = 0.2;
+            mag = 0.1;
             for i = 1:obj.N
                 if rand(1)<0.5
                     X(end, 2*i-1:2*i) = X(end, 2*i-1:2*i) + ...
-                        X(end, 2*i-1:2*i).*(mag*(2*rand(1,2)-2));
+                        X(end, 2*i-1:2*i).*(mag*(2*[rand(1,1), 1] - 2));
                 end
             end
             % Disturbance amplification
-            mag = 100;
+            mag = 250;
             for i = 1:obj.N
-                tIndices = (obj.DGs(i).noise.t > t_6 & obj.DGs(i).noise.t < (0.8*t_6 + 0.2*t_f));
+                tIndices = (obj.DGs(i).noise.t > t_6 & obj.DGs(i).noise.t < (0.98*t_6 + 0.02*t_f));
                 obj.DGs(i).noise.w(tIndices,:) = mag*obj.DGs(i).noise.w(tIndices,:);
             end
 
@@ -402,57 +396,66 @@ classdef DCMicrogrid < handle
 
         function out = loadDataMatrices(obj, t, X, Xs, Utilde, Wtilde)
 
-            meanAbsDistVals = [];
-            meanAbsDiscEVals = [];
+            % meanAbsDistVals = [];
+            % meanAbsDiscEVals = [];
             QBar_w = [];
             E1 = []; E2 = []; E3 = [];
             N = obj.N;
 
             % Data sampling
-            Ts = 1e-4;
+            Ts = 1e-5;
             obj.Ts = Ts;
             tVals = t(1):Ts:t(end);
-
 
             for k = 1:N
             
                 obj.DGs(k).Ts = Ts;
 
                 % Loading xTIlde and uTilde Data
-                xTilde = X(:, 2*k-1:2*k) - Xs(2*k-1:2*k,1)';
+                x_k = X(:, 2*k-1:2*k);
+                x_sk = Xs(:, 2*k-1:2*k);
+                xTilde = x_k - x_sk; %Xs(2*k-1:2*k,1)'
                 uTilde = Utilde(:, 2*k-1:2*k);
-                wTilde = Wtilde(:, 2*k-1:2*k);
+                % wTilde = Wtilde(:, 2*k-1:2*k);
             
                 xTildeSampled = interp1(t, xTilde, tVals, 'linear')';
                 uTildeSampled = interp1(t, uTilde, tVals, 'previous', 'extrap')';
-                wTildeSampled = Ts*interp1(t, wTilde, tVals, 'previous', 'extrap')';
+                % wTildeSampled = Ts*interp1(t, wTilde, tVals, 'previous', 'extrap')';
             
                 % Data loading
                 obj.DGs(k).xTilde = xTildeSampled(:,1:end-1);
                 obj.DGs(k).yTilde = obj.DGs(k).xTilde;
                 obj.DGs(k).xTildeBar = xTildeSampled(:,2:end);
                 obj.DGs(k).uTilde = uTildeSampled(:,1:end-1);
-                obj.DGs(k).wTilde = wTildeSampled(:,1:end-1);
-            
-                % Investigating discretization Error and Disturbance impact
-                meanAbsDistVal = mean(abs(obj.DGs(k).wTilde')); meanAbsDistVals = [meanAbsDistVals; meanAbsDistVal];
-                discError = obj.DGs(k).xTildeBar - ((eye(2)+Ts*obj.DGs(k).A)*obj.DGs(k).xTilde ...
+                % obj.DGs(k).wTilde = wTildeSampled(:,1:end-1);
+                
+                % Disturbance impact
+                % meanAbsDistVal = mean(abs(obj.DGs(k).wTilde')); 
+                % meanAbsDistVals = [meanAbsDistVals; meanAbsDistVal];
+                
+                % discretization Error Impact
+                discError = obj.DGs(k).xTildeBar - ( (eye(2) + Ts*obj.DGs(k).A)*obj.DGs(k).xTilde ...
                                         + Ts*obj.DGs(k).BBar*obj.DGs(k).uTilde);
-                meanAbsDiscEVal = mean(abs(discError')); meanAbsDiscEVals = [meanAbsDiscEVals; meanAbsDiscEVal];
+                % meanAbsDiscEVal = mean(abs(discError')); 
+                % meanAbsDiscEVals = [meanAbsDiscEVals; meanAbsDiscEVal];
                 
                 % Loading the discretization error as the disturbance 
                 obj.DGs(k).wTilde = discError; %%%% check
-                
-                % Finding an upper bound for disturbance: Q_w 
-                wwT = obj.DGs(k).wTilde*obj.DGs(k).wTilde';
-                lambda = max(eig(wwT))*1.001; %%%% chech
-                % eig(lambda*eye(2)-wwT);
-                Q_ww = -eye(length(tVals)-1);
-                Q_I = lambda*eye(2);
-                Q_z = zeros(2,length(tVals)-1);
-                Q_w = [Q_I, Q_z; Q_z', Q_ww];
+
+                % % Approach 1: Finding an upper bound for disturbance: Q_w 
+                % wwT = obj.DGs(k).wTilde*obj.DGs(k).wTilde';
+                % lambda = max(eig(wwT))*1.001; %%%% chech
+                % % eig(lambda*eye(2)-wwT);
+                % Q_ww = -eye(length(tVals)-1);
+                % Q_I = lambda*eye(2);
+                % Q_z = zeros(2,length(tVals)-1);
+                % Q_w = [Q_I, Q_z; Q_z', Q_ww];
+                % obj.DGs(k).Q_w = Q_w;
+
+                % % Approach 2: Compute Q_w
+                Q_w = obj.compute_Qw_from_wtilde(discError);
                 obj.DGs(k).Q_w = Q_w;
-            
+                            
                 % Loading QBar_w at DGs
                 L = [eye(2), obj.DGs(k).xTildeBar; 
                     zeros(2,2), -obj.DGs(k).xTilde; 
@@ -472,8 +475,47 @@ classdef DCMicrogrid < handle
             obj.QBar_w = QBar_w;
             obj.E_perm = [E1; E2; E3];
             
-            meanAbsDist = mean(meanAbsDistVals)
-            meanAbsDiscErr = mean(meanAbsDiscEVals)
+            % meanAbsDist = mean(meanAbsDistVals);
+            % meanAbsDiscErr = mean(meanAbsDiscEVals);
+
+        end
+
+        function Qw_val = compute_Qw_from_wtilde(obj, W)
+
+            % Given: W (nW x T)
+            [nW, T] = size(W);
+            
+            % Identity over time
+            I_n = eye(nW);
+            
+            % Decision variable Q_w (fully general symmetric for now)
+            
+            Q_I = sdpvar(nW, nW, 'symmetric');
+            Q_z = zeros(nW,T); %sdpvar(nW, 1, 'full')*ones(1, T);
+            Q_ww = -eye(T);
+            Q_w = [Q_I, Q_z; Q_z', Q_ww];
+            epsilon = sdpvar(1, 1, 'full');
+
+            % Construct the stacked data matrix
+            Phi = [I_n; W'];    % size: (T + nW*T) x T
+            
+            % QMI constraint
+            M = Phi' * Q_w * Phi;    % size: T x T
+            
+            Constraints = [M >= epsilon*eye(size(M)), epsilon >= 1e-3, Q_I >= epsilon*eye(size(Q_I))];
+            
+            % To avoid the trivial Q_w = 0, add some objective.
+            % Example: minimize Frobenius norm of Q_w, or add structure.
+            Objective = trace(Q_I) + epsilon;   % or something else
+            
+            opts = sdpsettings('solver','mosek','verbose',0);
+            sol  = optimize(Constraints, Objective, opts);
+            
+            if sol.problem ~= 0
+                error('SDP infeasible or solver failed: %s', sol.info);
+            end
+            
+            Qw_val = value(Q_w);
 
         end
 
@@ -489,8 +531,8 @@ classdef DCMicrogrid < handle
         
             U = zeros(nt, 2*N);
             Uc = zeros(nt, N, 5, 1);
-            UTilde = zeros(nt, 2*N);
-            WTilde = zeros(nt, 2*N);
+            Utilde = zeros(nt, 2*N);
+            Wtilde = zeros(nt, 2*N);
             Us = zeros(nt, 2*N);
             Xs = ones(nt,1)*obj.x_s';
 
@@ -516,12 +558,16 @@ classdef DCMicrogrid < handle
                 % DG-by-DG local and total inputs
                 for i = 1:N
 
-                    DG   = obj.DGs(i);
+                    DG = obj.DGs(i);
         
                     % DG.x was set by setStateVector
                     x_i  = DG.x;                       % local state of DG i
 
-                    ITilde_ki = Ik(i) - I_S(i);
+                    Iline_i = Ik(i);
+                    % Saturation
+                    Imax = 2*DG.Irated; Imin = -2*DG.Irated;
+                    Iline_i = min(Imax, max(Imin, Iline_i));
+            
 
                     u_Si = DG.u_s;
                     if useData
@@ -531,14 +577,18 @@ classdef DCMicrogrid < handle
                     end
                     u_Gi = u_Gk(i);
                     u_i  = u_Si + u_Li + u_Gi;     % total input
+                    % Saturation
+                    Vmax = 2*DG.Vrated; Vmin = -2*DG.Vrated;
+                    u_i = min(Vmax, max(Vmin, u_i));
         
+                    ITilde_ki = Iline_i - I_S(i);
                     uTilde_ki = u_i - u_Si;
                     
                     tVal = t(k);
                     w_i = interp1(DG.noise.t, DG.noise.w, tVal, 'previous', 'extrap')';
                     Wtilde_ki = (DG.BBar*w_i);
 
-                    U(k,2*i-1:2*i) = [Ik(i), u_i];
+                    U(k,2*i-1:2*i) = [Iline_i, u_i];
                     Uc(k,i,:,:) = [I_S(i); ITilde_ki; u_Si; u_Li; u_Gi];
                     Utilde(k,2*i-1:2*i) = [ITilde_ki, uTilde_ki];
                     Wtilde(k,2*i-1:2*i) = Wtilde_ki; 
@@ -584,6 +634,7 @@ classdef DCMicrogrid < handle
 
 
         function obj = setupNoise(obj, tspan, dt_noise, sigma)
+
             t0 = tspan(1);
             tf = tspan(end);
         
@@ -595,6 +646,7 @@ classdef DCMicrogrid < handle
                 obj.DGs(i).noise.t = t_noise;
                 obj.DGs(i).noise.w = w;
             end
+
         end
 
 
@@ -679,8 +731,6 @@ classdef DCMicrogrid < handle
                                   [tip(2) leftpt(2) rightpt(2)], ...
                                   [0.1 0.5 1.0], ...
                                   'EdgeColor', 'none');
-
-
                         
                     end
                 end
@@ -747,7 +797,6 @@ classdef DCMicrogrid < handle
             %     opts.set_state (1,1) logical = true
             %     opts.set_us    (1,1) logical = true
             % end
-        
             
             N    = obj.N;    
             nX   = 2*N;
@@ -852,9 +901,10 @@ classdef DCMicrogrid < handle
 
         end
 
+        
         function [AdjMat, KMat, out] = design_MB_GSC(obj, linkFiltThresh, useData)
         % Design a dense K (N x 2N) s.t. A + B K is Hurwitz (continuous-time).
-        % No sparsity constraints; we infer comm graph from K afterward.
+            % No sparsity constraints; we infer comm graph from K afterward.
             
             A = obj.A;  
             BBar = obj.BBar;
@@ -940,24 +990,7 @@ classdef DCMicrogrid < handle
 
 
 
-        % function out = designLocalK(obj, useData)
-        % % Run local dissipativity on each DG;
-        %     out = [];
-        %     for i = 1:obj.N
-        % 
-        %         if ~useData
-        %             oi = obj.DGs(i).designLocalXiDissipative();
-        %         else
-        %             oi = obj.DGs(i).designLocalXiDissipative_DataDriven();
-        %         end
-        % 
-        %         if oi.problem~=0
-        %             warning('Local design failed at DG %d: %s', i, oi.info);
-        %         else
-        %             out = [out; oi.K];
-        %         end
-        %     end
-        % end
+       
         
 
         function [AdjMat, KMat, out] = codesign_MB_DRC(obj, linkFiltThresh) 
@@ -970,9 +1003,7 @@ classdef DCMicrogrid < handle
                 end
             end
 
-
-            YBar = obj.YBar;
-            % YBar = YBar - 0*diag(diag(YBar));
+            YBar = obj.YBar
             BBar = obj.BBar;
             N = obj.N; 
             D = obj.D;
@@ -981,8 +1012,7 @@ classdef DCMicrogrid < handle
             % Whether to use a soft or hard graph constraint
             isSoft = 1;
             normType = 1;
-            maxCostVal = 0.001;
-            % minCostVal = 0.001;
+            maxCostVal = 1;
             
             % Set up the LMI problem
             I = eye(2*N);
@@ -990,18 +1020,32 @@ classdef DCMicrogrid < handle
             O = zeros(2*N);
 
             % Variables
-            K = sdpvar(2*N, 2*N,'full'); 
             P = sdpvar(N, N, 'diagonal');
             gammaSq = sdpvar(1, 1, 'full');
-            epsilon = sdpvar(1, 1);    
+            epsilon = sdpvar(1, 1); 
 
+            KHat = sdpvar(N, 2*N,'full');
+            K = [];
+            for i = 1:1:N
+                K_i = [];
+                for j = 1:1:N
+                    K_ij = [P(i,i)*YBar(i,j), 0; 
+                            KHat(i,2*j-1:2*j)];
+                    K_i = [K_i, K_ij];
+                end
+                K = [K; K_i];
+            end
+
+            % P\D'*K*D = YBar iff YHat = P*YBar
+            % D'*K = P*YBar*D'
+            % KBar = P\DBar'*KVal iff KBar = P\KHat;
+            % K = sdpvar(2*N, 2*N,'full');
 
             X_p_11 = [];
             X_11 = [];
             X_p_12 = [];
             X_12 = [];
             X_p_22 = [];
-
             for i = 1:1:N
                 nu_i = obj.DGs(i).nu;
                 rho_i = obj.DGs(i).rho;
@@ -1019,54 +1063,48 @@ classdef DCMicrogrid < handle
             for i = 1:1:N
                 costMatRow = [];
                 for j = 1:1:N
-                    dist_ij = norm(obj.DGs(i).pos-obj.DGs(j).pos);
+                    dist_ij = 1*norm(obj.DGs(i).pos-obj.DGs(j).pos);
                     if dist_ij==0
-                        dist_ij = 0.001;  %%%% Key point check
+                        dist_ij = 0; % 1e9; %Key point check
                     end
-                    costMatRow = [costMatRow, dist_ij*ones(2)];
+                    costMatRow = [costMatRow, dist_ij*ones(1,2)];
                 end
                 costMat = [costMat; costMatRow];
             end
-            costMat = costMat;
+            costMat = costMat
 
             % Objective Function
-            % costFun = 1*norm(Q.*costMatBlock,normType);
-            KMat1 = DBar'*(K.*costMat)*D;
-            KMat2 = DBar'*(K.*costMat)*DBar;
-            KMat = KMat1 + KMat2;
-            % costFun00 = sum(sum(KMat));
-            costFun0 = norm(KMat,normType);
+            KMat = KHat.*costMat;
+            costFun0 = norm(KMat(:),normType);
 
             % Minimum Budget Constraints
             con0 = [];
-            % con0 = [con0, costFun00 >= minCostVal];
-            con0 = [con0, costFun0 <= maxCostVal, gammaSq >= 0.001];
-           
+            con0 = [con0, costFun0 <= maxCostVal];
+            con0 = [con0, epsilon == 1e-6, gammaSq <= 1e6, gammaSq >= 0];
                         
             % Basic Constraints
-            con1 = [P >= 0.001*eye(N)];
+            con1 = [P >= epsilon*eye(N)];
+            limitVal = 10;
+            con1 = [con1, -P*limitVal*ones(size(KHat)) <= KHat, KHat <= P*limitVal*ones(size(KHat))];
 
-            %% Since: 
-            % KBar = D*K + DBar*YBar*D';
-            % L_uy = X_p_11*(BBar * KBar);
-            %% We have with KHat = X_p_11*BBar*D*K = (struct of DK)
+            % Main LMI
             L_uy = X_11*BBar*K;
-
             DMat = [X_p_11, O; O, I];
             MMat = [L_uy, X_p_11; I, O];
             ThetaMat = [- X_21*L_uy - L_uy'*X_12 - X_p_22, - X_p_21; - X_p_12, gammaSq*I];
             W = [DMat, MMat; MMat', ThetaMat];
-            con2 = W >= epsilon*eye(size(W)); % The real one
+            
+            W_dim = size(W,1);
+            epsilonSlack = sdpvar(W_dim, W_dim, 'diagonal'); 
 
-            con3 = 1*(D'*K - P*YBar*D')==zeros(size(D'*K));
-                        
+            con2 = (W - epsilonSlack) >= epsilon*eye(W_dim); % The real one
+            con2 = [con2, epsilonSlack >= -1*eye(W_dim), epsilonSlack <= 1*eye(W_dim)];
+                      
             % Total Cost and Constraints
             if isSoft
-                cons = [con0, con1, con2, con3]; % Without the hard graph constraint con7
-                costFun = 1*costFun0 + 1*gammaSq + 1*trace(P) - 1e12*epsilon; % soft 
-            else
-                cons = [con0, con1, con2, con3]; % With the hard graph constraint con7
-                costFun = 1*costFun0 + 1*gammaSq + 1*trace(P); % hard (same as soft)
+                cons = [con0, con1, con2]; % Without the hard graph constraint con7
+                costFun = 1*costFun0 + 0*gammaSq + 1*trace(P) + 0*epsilon + 1*norm(epsilonSlack,1); 
+                % epsilonslackcoef is a Key point check
             end
             
             % Solving
@@ -1086,26 +1124,38 @@ classdef DCMicrogrid < handle
         
             disp('Model-based DRC co-design SUCCESS!');
             [k_crit, minor_crit, minors] = obj.criticalLeadingMinor(value(W))
+            if abs(minor_crit)>1e-6
+                disp('Error in Minors!')
+                k_crit
+                minor_crit 
+                minors
+            end
 
-            PVal        = value(P);
+            PVal        = value(P)
             KVal        = value(K);
+            KHatVal = value(KHat)
             costFun0Val = value(costFun0);
             gammaSqVal  = value(gammaSq);
+            epsilonSlackVal = diag(value(epsilonSlack))';
+            [minEps,minEpsIdx] = min(epsilonSlackVal)
+            [maxEps,maxEpsIdx] = max(epsilonSlackVal)
         
             fprintf('epsilon    = %.4e\n', value(epsilon));
+            fprintf('epsilonSlackmin    = %.4e\n', minEps);
+            fprintf('epsilonSlackmax    = %.4e\n', maxEps);
             fprintf('||K||-weighted    = %.4e\n', costFun0Val);
             fprintf('gamma^2 (global)  = %.4e\n', gammaSqVal);
             fprintf('trace(P)          = %.4e\n', trace(PVal));
 
             
             % Consistency of DᵀK = P Ȳ Dᵀ
-            phyErr = norm(value(D'*K - P*YBar*D')) 
-            fprintf('||D''K - PȲD''|| = %.4e\n', phyErr);
+            % phyErr = norm(value(D'*K - P*YBar*D')); 
+            % fprintf('||D''K - PȲD''|| = %.4e\n', phyErr);
             
-            KBarVal = PVal \ DBar'*KVal
+            KBarVal = PVal \ KHatVal;
             obj.K = KBarVal;
 
-            [AdjMat, KMat] = obj.buildCommAdjFromK(linkFiltThresh);   % threshold for nonzero blocks
+            [AdjMat, KMat] = obj.buildCommAdjFromK(linkFiltThresh)   % threshold for nonzero blocks
 
         end
 
@@ -1134,7 +1184,7 @@ classdef DCMicrogrid < handle
             QBar_w = obj.QBar_w;
             E = obj.E_perm;
 
-            scaleQ = max(1, max(abs(QBar_w(:))))   % e.g. ~1e4 for your case
+            scaleQ = max(1, max(abs(QBar_w(:))));   % e.g. ~1e4 for your case
             QBar_w = QBar_w / scaleQ;
 
 
@@ -1143,7 +1193,7 @@ classdef DCMicrogrid < handle
             %--------------------------------------------------------------
             isSoft     = 1;
             normType   = 1;
-            maxCostVal = 0.001; %%%% check
+            maxCostVal = 1e-3; %%%% check
         
             %--------------------------------------------------------------
             % Basic identities
@@ -1161,7 +1211,8 @@ classdef DCMicrogrid < handle
             gammaSq = sdpvar(1, 1, 'full');             % global Y-dissipativity gain
             epsilon = sdpvar(1, 1);                     % small slack
             lambda  = sdpvar(1, 1);                     % data-driven robust multiplier
-        
+            
+
             %--------------------------------------------------------------
             % Build X_p^{kl} and X^{kl} from local (nu_i, rho_i)
             %   X_i^{11} = -nu_i I_2,  X_i^{12} = 0.5 I_2,  X_i^{22} = -rho_i I_2
@@ -1201,23 +1252,24 @@ classdef DCMicrogrid < handle
             %--------------------------------------------------------------
             costMat = [];
             for i = 1:N
-                row = [];
+                costMatRow = [];
                 for j = 1:N
                     dist_ij = norm(obj.DGs(i).pos - obj.DGs(j).pos);
                     if dist_ij == 0
-                        dist_ij = 0.001;   % avoid zero weight on self-links
+                        dist_ij = 0;   % avoid zero weight on self-links
                     end
-                    row = [row, dist_ij*ones(2)];
+                    costMatRow = [costMatRow, dist_ij*ones(1,2)];
                 end
-                costMat = [costMat; row];
+                costMat = [costMat; costMatRow];
             end
-        
+            costMat = costMat;
+
             % weighted controller matrix used in objective
-            KMat1   = DBar'*(K.*costMat)*D;
-            KMat2   = DBar'*(K.*costMat)*DBar;
-            KMat    = KMat1 + KMat2;
-            costFun0 = norm(KMat, normType);
-        
+            % KMat1   = DBar'*(K.*costMat)*D;
+            % KMat2   = DBar'*(K.*costMat)*DBar;
+            % KMat    = KMat1 + KMat2;
+            KMat = (DBar'*K).*costMat;
+            costFun0 = norm(KMat(:),normType);
 
             %--------------------------------------------------------------
             % Global LMI (data-driven robust version of Prop. 4)
@@ -1249,9 +1301,25 @@ classdef DCMicrogrid < handle
                  R_21, -R_22, -R_21;
                  O_R,  -R_12, O_R];
             
+            XBar_11_disp = XBar_11;
+
             EQ_wMat = [E*QBar_w*E', O_R,    O_R;
                         O_R,        O_R,    O_R;
                         O_R,        O_R,    E*QBar_w*E'];
+
+
+            QBar_w_disp = QBar_w;
+            EQBarET_neg = -E*QBar_w*E';
+            
+
+            [k_crit, minor_crit, minors] = obj.criticalLeadingMinor(EQBarET_neg);
+            if abs(minor_crit)>1e-6
+                disp('Error in Minors 0!')
+                if k_crit(1)>0
+                    col_crit = EQBarET_neg(1:k_crit(1),k_crit(1))
+                end
+            end
+            
 
             % EQ_wMat = [E*QBar_w*E', O_R,    O_R;
             %             O_R,        O_R,    0.5*E*QBar_w*E';
@@ -1263,7 +1331,9 @@ classdef DCMicrogrid < handle
             % Full LMI matrix
             W = [Q,  S;
                  S', R];
-        
+
+            W_dim = size(W,1);
+            epsilonSlack = sdpvar(W_dim, W_dim, 'diagonal'); 
 
             %--------------------------------------------------------------
             % Constraints
@@ -1271,22 +1341,22 @@ classdef DCMicrogrid < handle
             cons = [];
         
             % Communication budget
-            cons = [cons, costFun0 <= maxCostVal, gammaSq >= 0.001]; %%%% check
+            cons = [cons, costFun0 <= maxCostVal, gammaSq >= epsilon, epsilon >= 0.001, gammaSq<=1e-3]; %%%% check
         
             % Positivity / slacks 
-            cons = [cons, P >= 0.001*eye(N), lambda >= 0];
+            cons = [cons, lambda >= 0, epsilonSlack >= -1*eye(W_dim), epsilonSlack <= 1*eye(W_dim)];
         
             % Main Y-dissipativity LMI (data-driven)
-            cons = [cons, W >= epsilon*eye(size(W))];
+            cons = [cons, P >= epsilon*eye(N), W - epsilonSlack >= epsilon*eye(W_dim)];
         
             % Structural coupling constraint: DᵀK = P Ȳ Dᵀ
-            cons = [cons, 1*(D'*K - P*YBar*D')==zeros(size(D'*K))]; %%%% check
+            cons = [cons, 1e6*(D'*K - P*YBar*D') == zeros(size(D'*K))]; %%%% check
         
             %--------------------------------------------------------------
             % Objective: sparse K, small gamma, small λ and P
             %--------------------------------------------------------------
             if isSoft
-                costFun = 1*costFun0 + 1*gammaSq + 1*trace(P) - 1e12*epsilon; %%%% check
+                costFun = 1*costFun0 + 1*gammaSq + 1*trace(P) + 1*epsilon + 1*norm(epsilonSlack,1); %%%% check
             else
                 % cons = [cons, ...]
                 % costFun = 1*costFun0 + 1*gammaSq + 1e3*lambda + 1*trace(P);
@@ -1311,7 +1381,13 @@ classdef DCMicrogrid < handle
         
             disp('Data-driven DRC co-design SUCCESS!');
         
-            [k_crit, minor_crit, minors] = obj.criticalLeadingMinor(value(W))
+            [k_crit, minor_crit, minors] = obj.criticalLeadingMinor(value(W));
+            if abs(minor_crit)>1e-6
+                disp('Error in Minors!')
+                k_crit
+                minor_crit 
+                minors
+            end
 
             %--------------------------------------------------------------
             % Extract and store results
@@ -1321,23 +1397,29 @@ classdef DCMicrogrid < handle
             costFun0Val = value(costFun0);
             gammaSqVal  = value(gammaSq);
             lambdaVal   = value(lambda);
-        
+            epsilonSlackVal = diag(value(epsilonSlack))';
+            [minEps,minEpsIdx] = min(epsilonSlackVal)
+            [maxEps,maxEpsIdx] = max(epsilonSlackVal)
+
                     
             fprintf('epsilon    = %.4e\n', value(epsilon));
+            fprintf('epsilonSlackmin    = %.4e\n', minEps);
+            fprintf('epsilonSlackmax    = %.4e\n', maxEps);
             fprintf('||K||-weighted    = %.4e\n', costFun0Val);
             fprintf('gamma^2 (global)  = %.4e\n', gammaSqVal);
             fprintf('trace(P)          = %.4e\n', trace(PVal));
-            fprintf('lambda (robust)   = %.4e\n', lambdaVal);
+            
 
             % Consistency of DᵀK = P Ȳ Dᵀ
             phyErr = norm(value(D'*K - P*YBar*D'));
             fprintf('||D''K - PȲD''|| = %.4e\n', phyErr);
+            fprintf('lambda (robust)   = %.4e\n', lambdaVal);
         
             % Recover K̄ as in model-based code
-            KBarVal   = PVal \ (DBar'*KVal)
+            KBarVal   = PVal \ (DBar'*KVal);
             obj.K     = KBarVal;
 
-            [AdjMat, KMat] = obj.buildCommAdjFromK(linkFiltThresh);   % threshold for nonzero blocks
+            [AdjMat, KMat] = obj.buildCommAdjFromK(linkFiltThresh)   % threshold for nonzero blocks
         
             
         end
@@ -1347,16 +1429,23 @@ classdef DCMicrogrid < handle
             
             M;
             n = size(M,1);
-            minors = zeros(n,1);
-        
+            minors = zeros(1,n);
+            firstFound = 0;
+            k_crit1 = 0;
+
             for k = 1:n
                 Mk = M(1:k, 1:k);
-                kVal = k
-                detVal = det(Mk)
+                kVal = k;
+                detVal = det(Mk);
                 minors(k) = detVal;
+                if detVal < 0 && ~firstFound
+                    k_crit1 = k;
+                    firstFound = 1;
+                end
             end
-        
-            [minor_crit, k_crit] = min(minors);
+
+            [minor_crit, k_crit2] = min(minors);
+            k_crit = [k_crit1, k_crit2];
 
         end
 

@@ -90,7 +90,7 @@ classdef DG < handle
         
         function x = getState(obj),   x = obj.x;       end
 
-        function dx = dynamics(obj, t, Iline, u_G, useData)
+        function dx = dynamics(obj, t, Iline_i, u_G, useData)
             
             % Piecewise-constant noise (sample & hold)
             w_i = interp1(obj.noise.t, obj.noise.w, t, 'previous', 'extrap')';
@@ -102,8 +102,16 @@ classdef DG < handle
             end
             
             u_i = obj.u_s + u_L + u_G;                     % controller-computed input
+
+            % saturated_x = min(upper_bound, max(lower_bound, x));
+            % Saturation
+            Imax = 2*obj.Irated; Imin = -2*obj.Irated; 
+            Iline_i = min(Imax, max(Imin, Iline_i));
+            Vmax = 2*obj.Vrated; Vmin = -2*obj.Vrated;
+            u_i = min(Vmax, max(Vmin, u_i));
+            
         
-            dx  = obj.A*obj.x + obj.BBar*[Iline; u_i] + obj.E*obj.Ibar + obj.BBar*w_i;
+            dx  = obj.A*obj.x + obj.BBar*[Iline_i; u_i] + obj.E*obj.Ibar + obj.BBar*w_i;
 
         end
 
@@ -143,7 +151,7 @@ classdef DG < handle
             DBar = [0; 1];
         
             P   = sdpvar(2,2,'symmetric');
-            L   = sdpvar(2,2,'full');       % Y = K_iL * P
+            L   = [zeros(1,2); sdpvar(1,2,'full')];       % Y = K_iL * P
             xBar11 = sdpvar(1,1);
             x22 = sdpvar(1,1);
             x12 = 0.5;
@@ -153,63 +161,89 @@ classdef DG < handle
 
             I = eye(2);
             O = zeros(2);
+            O_12 = zeros(1,2);
 
             % For Necessary Conditions
-            KTilde11 = sdpvar(2,2,'full');
-            KHat21 = sdpvar(2,2,'full');
-            yTilde11 = sdpvar(1,1,'full');
-            yHat22 = sdpvar(1,1,'full');
-            yCheck22 = sdpvar(1,1,'full');
+            KTilde = sdpvar(2,2,'full');
+            KHat = sdpvar(2,2,'full');
+            yBar11 = sdpvar(1,1,'full');
             yBar12 = 0;
             yBar21 = 0;
+            yBar22 = sdpvar(1,1,'full');
         
             % Main LMI
             AP_BL = A*P + BBar*L;                % Acl_i * P
             LMI1 = [I,    P,                  O;
-                   P,  -AP_BL'-AP_BL,      x22*I + P*x21;
-                   O,   x22*I + P*x12       xBar11*I];
-        
-            cons = [P >= epsilon*eye(2), epsilon >= 0.001, LMI1 >= epsilon*eye(size(LMI1)), D'*L == 0*YBar*D'*P, x22 <= -epsilon];
+                   P,  -AP_BL'-AP_BL,      x22*I + x21*P;
+                   O,   x22*I + x12*P       xBar11*I];
 
-            BK = BBar*KHat21;
-            LMI2 = [xBar11*I,           O,              BBar*KTilde11,      xBar11*I;
-                    O,                  -yCheck22*I     -yHat22*I,          O;
-                    KTilde11'*BBar'    -yHat22*I       -BK-BK'+I,          -x21*I;
-                    xBar11*I,           O,              -x21*I,             yTilde11*I];
+            BK = BBar*KHat;
+            LMI2 = [xBar11*I,           O,              BBar*KTilde,      xBar11*I;
+                    O,                  -yBar22*I     -yBar22*I,          O;
+                    KTilde'*BBar'    -yBar22*I       -BK-BK'+I,          -x21*I;
+                    xBar11*I,           O,              -x12*I,             yBar11*I];
             
-            cons = [cons, LMI2 >= epsilon*eye(size(LMI2)), yHat22 <= -epsilon];
+            scalarCons = [x22 <= -epsilon, yBar22 <= -epsilon, epsilon >= 0.001];
+            
+            % phyCons = [1e12*D'*L == O_12];
+            
+            
+            mainCons = [P >= epsilon*eye(2), LMI1 >= epsilon*eye(size(LMI1))];
+            mainCons = [mainCons, LMI2 >= epsilon*eye(size(LMI2))];
+            
+            cons = [scalarCons, mainCons];
+
+            % BMI Cons
+            xBar11ValGuess = 0.002; % revise this
+            BMICons = [xBar11ValGuess*KHat == x21*KTilde];
+            cons = [cons, BMICons];
+
             
             % Optimize
-
-
             ops  = sdpsettings('solver','mosek','verbose',0);
-            sol  = optimize(cons, 1*yTilde11 + trace(P) + epsilon, ops);
+            
+            objective = 1*yBar11 - 1*yBar22 + trace(P) + epsilon;
+
+            sol  = optimize(cons, objective, ops);
         
             out.problem = sol.problem;
             out.info    = yalmiperror(sol.problem);
             out.P       = value(P);
             out.L       = value(L);
-            xBar11Val = value(xBar11); 
+            
+            LVal = value(L);
+            PVal = value(P);
+
+            xBar11Val = value(xBar11)
+            if abs(xBar11Val-xBar11ValGuess) > 1e-6
+                disp(['Revise xBar11ValGuess towards: ',num2str(xBar11Val), ' from ', num2str(xBar11ValGuess),'.'])
+            end
             x22Val = value(x22);
             x11Val = (-x22Val)\xBar11Val;
+
             out.nu      = -x11Val;
             out.rho     = -x22Val;
 
-
-            [k_crit, minor_crit, minors] = obj.criticalLeadingMinor(value(LMI1));
-            [k_crit, minor_crit, minors] = obj.criticalLeadingMinor(value(LMI2));
+            [k_crit, minor_crit, ~] = obj.criticalLeadingMinor(value(LMI1));
+            [k_crit2, minor_crit2, ~] = obj.criticalLeadingMinor(value(LMI2));
+            if abs(minor_crit)>1e-3 || abs(minor_crit2)>1e-3
+                disp('Error in Minors!')
+            end
 
             if sol.problem==0
                 
                 K = out.L / out.P;
                 out.K = DBar'*K;
 
+                eigs = eig(obj.A + obj.BBar*K)
+
                 % Store results in the DG
                 obj.K       = out.K;
                 obj.nu      = out.nu;
                 obj.rho     = out.rho;
 
-                disp(['Local Design Success! (nu,rho)=(',num2str(out.nu),',',num2str(out.rho),')','K=[',num2str(out.K(1)),',',num2str(out.K(2)),']'])
+                disp(['Local Design Success at DG ',num2str(obj.id),'!']);
+                disp(['(nu,rho)=(',num2str(out.nu),',',num2str(out.rho),'), ','K=[',num2str(out.K(1)),',',num2str(out.K(2)),']']);
 
             else
                 warning('Local Design Fail: %s', sol.info);
@@ -239,16 +273,12 @@ classdef DG < handle
 
             % Data matrices
             X = obj.xTilde;
-            % XBar = obj.xTildeBar;
-            U = obj.uTilde;
+            % U = obj.uTilde;
             Y = obj.yTilde;
-            QBar_w  = 0.5*(obj.QBar_w + obj.QBar_w'); 
 
-            scaleQ = max(1, max(abs(QBar_w(:))));   % e.g. ~1e4 for your case
+            QBar_w  = 0.5*(obj.QBar_w + obj.QBar_w');
+            scaleQ = max(1, max(abs(QBar_w(:))));   % e.g. ~1e4
             QBar_w = QBar_w / scaleQ;
-
-
-            
 
             % Basic matrices
             I_n  = eye(n);
@@ -265,7 +295,8 @@ classdef DG < handle
             % Decision variables of Proposition 7
             % ---------------------------------------------------------------------
             % Main controller matrices
-            KTilde = sdpvar(m,n,'full');   % \tilde K_i
+            
+            KTilde = [zeros(1,2); sdpvar(1,2,'full')]; % \tilde K_i
             KHat   = sdpvar(T,n,'full');   % \hat K_i
         
             % Scalar multipliers for the QMI
@@ -279,16 +310,15 @@ classdef DG < handle
             x22     = sdpvar(1,1);
 
             % For the "necessary condition" LMI (same set as in Prop. 5 code)
-            KTilde11 = sdpvar(m,n,'full');
-            KHat21   = sdpvar(m,n,'full');
-            yTilde11 = sdpvar(1,1,'full');
+            KTildeii = sdpvar(m,n,'full');
+            KHatii   = sdpvar(m,n,'full');
+            yBar11 = sdpvar(1,1,'full');
             yBar12 = 0;
             yBar21 = 0;
-            yHat22   = sdpvar(1,1,'full');
-            yCheck22 = sdpvar(1,1,'full');
+            yBar22 = sdpvar(1,1,'full');
         
             % Tuning / regularization parameter
-            epsilon = sdpvar(5,5,'diagonal');
+            epsilon = sdpvar(1,1);
         
             % ---------------------------------------------------------------------
             % LMI #1:  [Qi1  Si1;  Si1'  Ri1] >= 0  (data–driven robust LMI)
@@ -313,30 +343,31 @@ classdef DG < handle
         
             Ri1 = R_struct_i1 - lambda1*QBar_w;
         
-            LMI1 = [ Qi1,  Si1;
-                     Si1', Ri1];
+
+            LMI1 = [Qi1,  Si1;
+                    Si1', Ri1];
         
             % ---------------------------------------------------------------------
             % LMI #2:  [Qi2  Si2;  Si2'  Ri2] >= 0  (necessary conditions, data–driven)
             % ---------------------------------------------------------------------
             
             % Q_{i2}
-            Qi2 = [ -yCheck22*I_n,      O_n;
-                    O_n,               yTilde11*I_n ];
+            Qi2 = [ -yBar22*I_n,      O_n;
+                    O_n,               yBar11*I_n ];
         
             % S_{i2}
             % (block structure follows directly from the screenshot; dimensions are
             % multiples of n; adapt if your Xi-parameterization differs)
-            Si2 = [ O_n,           O_n,  O_nm, -yHat22*I_n,          O_n,        O_nm;
+            Si2 = [ O_n,           O_n,  O_nm, -yBar22*I_n,          O_n,        O_nm;
                     xBar11*I_n,    O_n,  O_nm, (-x21 + yBar21)*I_n,    O_n,        O_nm];
         
             % R_{i2} – large block matrix then minus lambda2*blkdiag(Qw_bar,Qw_bar)
             R_struct_i2 = [ xBar11*I_n,  O_n,        O_nm,        O_n,            O_n,       O_nm;
                             O_n,         O_n,        O_nm,        O_n,            O_n,       O_nm;
-                            O_mn,        O_mn,        O_m,        KTilde11,        O_mn,      O_m;
-                            O_n,         O_n,        KTilde11',   I_n,            O_n,      -KHat21;
+                            O_mn,        O_mn,        O_m,        KTildeii,        O_mn,      O_m;
+                            O_n,         O_n,        KTildeii',   I_n,            O_n,      -KHatii';
                             O_n,         O_n,        O_nm,        O_n,            O_n,       O_nm;
-                            O_mn,         O_mn,      O_m,       -KHat21',       O_mn,       O_m ];
+                            O_mn,         O_mn,      O_m,         -KHatii,       O_mn,       O_m ];
         
             Ri2 = R_struct_i2 - lambda2*blkdiag(QBar_w, QBar_w);
         
@@ -348,33 +379,40 @@ classdef DG < handle
             % ---------------------------------------------------------------------
             % Sign constraints from Proposition 7
             
-            scalarCons = [x22 <= -epsilon(1,1), yHat22 <= -epsilon(2,2),...
-                          lambda1 >= 0, lambda2 >= 0, epsilon >= 1e-9*eye(size(epsilon)),...
-                          epsilon <= 1*eye(size(epsilon))]; %%%% check
-            
+            scalarCons = [x22 <= -epsilon, yBar22 <= -epsilon,...
+                          lambda1 >= 0, lambda2 >= 0, ...
+                          epsilon >= 1e-9]; %%%% check
 
             % Physical Constraints:
-            O_12 = zeros(1,2);
-            phyCons = [1e6*D'*KTilde == O_12]; %%%% check
+            % O_12 = zeros(1,2);
+            % phyCons = [1e12*D'*KTilde == O_12]; %%%% check
 
             % Symmetry contraitns
-            symCons = [];
-            symCons = [symCons, X*KHat == (X*KHat)'];
+            symCons = [X*KHat == (X*KHat)'];
 
             % Main LMIs
-            mainCons = [];
-            mainCons = [mainCons, LMI1 >= epsilon(4,4)*eye(size(LMI1))];
-            mainCons = [mainCons, LMI2 >= epsilon(5,5)*eye(size(LMI2))];
+            mainCons = [XKhatSym >= epsilon*eye(size(XKhatSym))];
+            mainCons = [mainCons, LMI1 >= epsilon*eye(size(LMI1))];
+            mainCons = [mainCons, LMI2 >= epsilon*eye(size(LMI2))];
         
-            cons = [scalarCons, phyCons, symCons, mainCons];
+            cons = [scalarCons, symCons, mainCons];
+
+
+            % BMI Cons
+            xBar11ValGuess = 1e-8; % revise this
+            BMICons = [xBar11ValGuess*KHatii == x21*KTildeii];
+            % cons = [cons, BMICons];
+
+
+            % cons = [cons, -0>=x22, x22>=-0.5, 2>=xBar11, xBar11>=0.1];
             % ---------------------------------------------------------------------
             % Solve the SDP
             % ---------------------------------------------------------------------
             ops = sdpsettings('solver','mosek','verbose',0,'showprogress',0);
         
             % Simple objective: favor "small" Xi, y-variables and multipliers
-            objective = 1*yTilde11 + 1*trace(XKhatSym) - 1*trace(epsilon) + 1*x22 + 1e3*xBar11; %%%% check
-        
+            objective = 1*yBar11 - 1*yBar22 + 1*trace(XKhatSym) + 1*epsilon; %%%% check
+            % tempCost  = (x22-(-0.296))^2+(xBar11-0.9584)^2;
             sol = optimize(cons, objective, ops);
         
             % ---------------------------------------------------------------------
@@ -385,65 +423,105 @@ classdef DG < handle
             
             out.P = value(XKhatSym);
             out.L = value(KTilde);
+            
+            LVal = value(KTilde);
+            PVal = value(XKhatSym);
 
-            XKhatSymVal = value(XKhatSym);
-            % KTildeVal = value(KTilde)
-            % LVal_2 = DBar'*LVal
-            % Y_0 = D'*KTilde
+            % XBar = obj.xTildeBar;
+            % XXT = XBar*XBar'
+            % W = obj.wTilde;
+            % WWT = W*W'
+            Q_w_disp = obj.Q_w(1:5,1:5);
+            QBar_w_disp = QBar_w(1:5,1:5);  
+
             lam1 = value(lambda1);
             lam2 = value(lambda2);
-            yTilde11Val = value(yTilde11);
-            % KTYT = value(x21*KHat'*Y')
-            % value(X*KHat)/value(XKhatSym)
+            
+            Qi1Val = value(Qi1);
+            Si1Val = value(Si1);
             R_struct_i1Val = value(R_struct_i1);
             Ri1Val = value(Ri1);
 
-            xBar11Val = value(xBar11); 
+            % KTildeVal = value(KTilde)
+            % LVal_2 = DBar'*LVal
+            % Y_0 = D'*KTilde
+            yBar11Val = value(yBar11);
+            yBar22Val = value(yBar22);
+            % KTYT = value(x21*KHat'*Y')
+            % value(X*KHat)/value(XKhatSym)
+
+            xBar11Val = value(xBar11)
+            if abs(xBar11Val-xBar11ValGuess) > 1e-6
+                disp(['Revise xBar11ValGuess towards: ',num2str(xBar11Val), ' from ', num2str(xBar11ValGuess),'.'])
+            end
             x22Val = value(x22);
             x11Val = (-x22Val)\xBar11Val;
-            out.nu      = -x11Val;
-            out.rho     = -x22Val;
+            out.nu = -x11Val;
+            out.rho = -x22Val;
         
-            [k_crit, minor_crit, minors] = obj.criticalLeadingMinor(value(LMI1));
-            % [k_crit, minor_crit, minors] = obj.criticalLeadingMinor(value(LMI2))
+            [k_crit, minor_crit, ~] = obj.criticalLeadingMinor(value(LMI1));
+            [k_crit2, minor_crit2, ~] = obj.criticalLeadingMinor(value(LMI2));
+            if abs(minor_crit)>1e-3 || abs(minor_crit2)>1e-3
+                disp('Error in Minors!')
+            end
 
             if sol.problem == 0
                 
                 K = out.L / out.P;
                 out.K = DBar'*K;
 
+                A = (eye(2) + obj.Ts*obj.A);
+                B = obj.Ts*obj.BBar;
+                eigs = eig(A + B*K);
+
+                eigs = abs(eigs)
+                % K = place(A,-B,real(eigs))
+                % eigs = eig(A + B*K)
+                % out.K = DBar'*K;
+
                 % Store results in the DG
                 obj.K       = out.K;
                 obj.nu      = out.nu;
                 obj.rho     = out.rho;
 
-                disp(['Local Design Success! (nu,rho)=(',num2str(out.nu),',',num2str(out.rho),')','K=[',num2str(out.K(1)),',',num2str(out.K(2)),']'])
+                disp(['Local Design Success at DG ',num2str(obj.id),'!']);
+                disp(['(nu,rho)=(',num2str(out.nu),',',num2str(out.rho),'), ','K=[',num2str(out.K(1)),',',num2str(out.K(2)),']']);
 
             else
+
                 warning('Local Design Fail: %s', sol.info);
                 out.K = [0 0]; 
 
                 obj.K       = out.K;
-                obj.Kd      = out.K;
                 obj.nu      = 0;
                 obj.rho     = 0;
+
             end
 
         end
 
         
-        function [k_crit, minor_crit, minors] = criticalLeadingMinor(obj,M)
+        function [k_crit, minor_crit, minors] = criticalLeadingMinor(obj, M)
             
             M;
             n = size(M,1);
-            minors = zeros(n,1);
-        
+            minors = zeros(1,n);
+            firstFound = 0;
+            k_crit1 = 0;
+
             for k = 1:n
                 Mk = M(1:k, 1:k);
-                minors(k) = det(Mk);
+                kVal = k;
+                detVal = det(Mk);
+                minors(k) = detVal;
+                if detVal < 0 && ~firstFound
+                    k_crit1 = k;
+                    firstFound = 1;
+                end
             end
         
-            [minor_crit, k_crit] = min(minors);
+            [minor_crit, k_crit2] = min(minors);
+            k_crit = [k_crit1, k_crit2];
 
         end
 
