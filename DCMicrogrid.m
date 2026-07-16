@@ -1,5 +1,10 @@
 classdef DCMicrogrid < handle
-    % Holds arrays of DGs and TransmissionLines; simulates and draws
+    % DCMicrogrid Network assembly, simulation, and controller co-design.
+    %
+    % Runtime role: key system component used by main.mlx. It assembles DG
+    % and line models, computes operating points, runs staged simulations,
+    % records data matrices, implements model/data-driven global designs,
+    % and draws the physical and communication topologies.
     properties
         DGs
         Lines
@@ -70,11 +75,25 @@ classdef DCMicrogrid < handle
                 i = obj.Lines(e).i; 
                 j = obj.Lines(e).j; 
                 g = obj.Lines(e).g;
+
+                % REVIEW PROPOSAL SYS-01 (ADD): validate endpoints and line
+                % conductance before indexing the network matrices.
+                % assert(i>=1 && i<=N && j>=1 && j<=N && i~=j, ...
+                %     'DCMicrogrid:InvalidLineEndpoints','Invalid line endpoints.');
+                % assert(isfinite(g) && g>0, 'DCMicrogrid:InvalidConductance', ...
+                %     'Every physical line must have positive finite conductance.');
+
                 Y(i,j) = g; 
                 Y(j,i) = g;
                 
                 YBar(i,j) = -g; 
                 YBar(j,i) = -g;
+
+                % REVIEW PROPOSAL SYS-02 (REPLACE): if parallel physical
+                % lines are allowed, replace the four assignments above by
+                % accumulation so off-diagonal and diagonal terms agree.
+                % Y(i,j) = Y(i,j)+g;       Y(j,i) = Y(j,i)+g;
+                % YBar(i,j) = YBar(i,j)-g; YBar(j,i) = YBar(j,i)-g;
 
                 YBar(i,i) = YBar(i,i)+g; 
                 YBar(j,j) = YBar(j,j)+g;
@@ -117,6 +136,13 @@ classdef DCMicrogrid < handle
             t_4 = 0.6*t_f; % When a parameter disturbance enters
             t_5 = 0.65*t_f; % When data-driven method reacts
             t_6 = 0.8*t_f; % When high disturbance and a state disturbance enters together
+
+            % REVIEW PROPOSAL SIM-01 (ADD): uncomment this block to make the
+            % event schedule correct for a tspan that does not start at zero.
+            % duration = t_f-t_0;
+            % t_1=t_0+0.05*duration; t_2=t_0+0.20*duration;
+            % t_3=t_0+0.40*duration; t_4=t_0+0.60*duration;
+            % t_5=t_0+0.65*duration; t_6=t_0+0.80*duration;
             
             t = [];
             X = [];
@@ -174,6 +200,12 @@ classdef DCMicrogrid < handle
                 if rand(1)<0.5
                     X(end, 2*i-1:2*i) = X(end, 2*i-1:2*i) + ...
                         X(end, 2*i-1:2*i).*(mag*(2*[rand(1,1), 1] - 2));
+
+                    % REVIEW PROPOSAL SIM-02 (REPLACE): the active expression
+                    % only decreases voltage and applies exactly zero current
+                    % disturbance. Replace it with a symmetric two-state draw.
+                    % X(end,2*i-1:2*i) = X(end,2*i-1:2*i).*( ...
+                    %     1 + mag*(2*rand(1,2)-1));
                 end
             end
             
@@ -199,6 +231,9 @@ classdef DCMicrogrid < handle
             mag = 500;
             for i = 1:obj.N
                 tIndices = (obj.DGs(i).noise.t > t_3 & obj.DGs(i).noise.t < (0.98*t_3 + 0.02*t_4));
+                % REVIEW PROPOSAL SIM-03 (ADD): uncomment to make the
+                % heightened disturbance span all of Stage 4 instead of 2%.
+                % tIndices = obj.DGs(i).noise.t > t_3 & obj.DGs(i).noise.t <= t_4;
                 obj.DGs(i).noise.w(tIndices,:) = mag*obj.DGs(i).noise.w(tIndices,:);
             end
 
@@ -225,6 +260,15 @@ classdef DCMicrogrid < handle
             for i = 1:obj.N
                 obj.DGs(i).A    = obj.DGs(i).A + obj.DGs(i).A.*(mag*(2*rand(size(obj.DGs(i).A))-1));
                 obj.DGs(i).Ibar = obj.DGs(i).Ibar + obj.DGs(i).Ibar.*(mag*(2*rand(size(obj.DGs(i).Ibar))-1));
+
+                % REVIEW PROPOSAL SIM-04 (ADD): uncomment this structured
+                % perturbation block to overwrite the arbitrary A perturbation
+                % using physically meaningful component changes instead.
+                % obj.DGs(i).L  = obj.DGs(i).L *(1+mag*(2*rand()-1));
+                % obj.DGs(i).C  = obj.DGs(i).C *(1+mag*(2*rand()-1));
+                % obj.DGs(i).Rf = obj.DGs(i).Rf*(1+mag*(2*rand()-1));
+                % obj.DGs(i).RL = obj.DGs(i).RL*(1+mag*(2*rand()-1));
+                % obj.DGs(i).updateModel();
             end
            
             obj.buildSystemMatrices();
@@ -287,12 +331,20 @@ classdef DCMicrogrid < handle
                 if rand(1)<0.5
                     X(end, 2*i-1:2*i) = X(end, 2*i-1:2*i) + ...
                         X(end, 2*i-1:2*i).*(mag*(2*[rand(1,1), 1] - 2));
+
+                    % REVIEW PROPOSAL SIM-05 (REPLACE): same correction as
+                    % SIM-02 for the final-stage state disturbance.
+                    % X(end,2*i-1:2*i) = X(end,2*i-1:2*i).*( ...
+                    %     1 + mag*(2*rand(1,2)-1));
                 end
             end
             % Disturbance amplification
             mag = 250;
             for i = 1:obj.N
                 tIndices = (obj.DGs(i).noise.t > t_6 & obj.DGs(i).noise.t < (0.98*t_6 + 0.02*t_f));
+                % REVIEW PROPOSAL SIM-06 (ADD): uncomment for a full Stage-7
+                % disturbance interval rather than the first 2% only.
+                % tIndices = obj.DGs(i).noise.t > t_6 & obj.DGs(i).noise.t <= t_f;
                 obj.DGs(i).noise.w(tIndices,:) = mag*obj.DGs(i).noise.w(tIndices,:);
             end
 
@@ -428,6 +480,14 @@ classdef DCMicrogrid < handle
                 obj.DGs(k).xTildeBar = xTildeSampled(:,2:end);
                 obj.DGs(k).uTilde = uTildeSampled(:,1:end-1);
                 % obj.DGs(k).wTilde = wTildeSampled(:,1:end-1);
+
+                % REVIEW PROPOSAL DATA-01 (ADD): verify Assumption 5 before
+                % constructing either Proposition 7 or Proposition 8.
+                % dataStack = [obj.DGs(k).uTilde;obj.DGs(k).xTilde];
+                % sData = svd(dataStack);
+                % rankTol = max(size(dataStack))*eps(max(sData));
+                % assert(sum(sData>rankTol)==size(dataStack,1), ...
+                %     'DCMicrogrid:DataRank','DG %d violates Assumption 5.',k);
                 
                 % Disturbance impact
                 % meanAbsDistVal = mean(abs(obj.DGs(k).wTilde')); 
@@ -442,6 +502,15 @@ classdef DCMicrogrid < handle
                 % Loading the discretization error as the disturbance 
                 obj.DGs(k).wTilde = discError; %%%% check
 
+                % REVIEW PROPOSAL DATA-02 (REPLACE): the active residual uses
+                % the supposedly unknown A and BBar. For a simulation-only
+                % check, use the logged disturbance impact instead. The Ts
+                % scaling below is forward-Euler only; exact integration is
+                % preferable when the disturbance is held over the interval.
+                % wImpact = Wtilde(:,2*k-1:2*k);
+                % wImpactSampled = Ts*interp1(t,wImpact,tVals,'previous','extrap')';
+                % obj.DGs(k).wTilde = wImpactSampled(:,1:end-1);
+
                 % % Approach 1: Finding an upper bound for disturbance: Q_w 
                 % wwT = obj.DGs(k).wTilde*obj.DGs(k).wTilde';
                 % lambda = max(eig(wwT))*1.001; %%%% chech
@@ -454,6 +523,10 @@ classdef DCMicrogrid < handle
 
                 % % Approach 2: Compute Q_w
                 Q_w = obj.compute_Qw_from_wtilde(discError);
+                % REVIEW PROPOSAL DATA-03 (ADD): when DATA-02 is enabled,
+                % uncomment this override. For the paper claim, replace both
+                % fitted bounds by an independently specified a-priori Q_w.
+                % Q_w = obj.compute_Qw_from_wtilde(obj.DGs(k).wTilde);
                 obj.DGs(k).Q_w = Q_w;
                             
                 % Loading QBar_w at DGs
@@ -517,6 +590,12 @@ classdef DCMicrogrid < handle
             
             Qw_val = value(Q_w);
 
+            % REVIEW PROPOSAL DATA-04 (ADD): a bound fitted to the exact
+            % observed realization has no reserve. Inflate its state block or,
+            % preferably, supply a physical bound selected before collecting data.
+            % disturbanceMargin = 1.20;
+            % Qw_val(1:nW,1:nW) = disturbanceMargin^2*Qw_val(1:nW,1:nW);
+
         end
 
 
@@ -567,6 +646,9 @@ classdef DCMicrogrid < handle
                     % Saturation
                     Imax = 2*DG.Irated; Imin = -2*DG.Irated;
                     Iline_i = min(Imax, max(Imin, Iline_i));
+                    % REVIEW PROPOSAL DATA-05 (ADD): keep recorded input data
+                    % consistent with the network current used by the theory.
+                    % Iline_i = Ik(i);
             
 
                     u_Si = DG.u_s;
@@ -580,6 +662,9 @@ classdef DCMicrogrid < handle
                     % Saturation
                     Vmax = 2*DG.Vrated; Vmin = -2*DG.Vrated;
                     u_i = min(Vmax, max(Vmin, u_i));
+                    % REVIEW PROPOSAL DATA-06 (ADD): disable command clipping
+                    % for the certified linear run, or model/log saturation.
+                    % u_i = u_Si + u_Li + u_Gi;
         
                     ITilde_ki = Iline_i - I_S(i);
                     uTilde_ki = u_i - u_Si;
@@ -639,10 +724,21 @@ classdef DCMicrogrid < handle
             tf = tspan(end);
         
             t_noise = (t0:dt_noise:tf).';
-            % One scalar disturbance per DG; adjust size as needed
+            % sigma is currently used as a standard-deviation/factor matrix,
+            % not as a covariance matrix or a scalar disturbance variance.
+
+            % REVIEW PROPOSAL DATA-07 (ADD): validate the actual two-channel
+            % disturbance factor expected by randn(...,2)*sigma.
+            % validateattributes(dt_noise,{'numeric'},{'scalar','positive','finite'});
+            % assert(isequal(size(sigma),[2 2]) && all(isfinite(sigma(:))), ...
+            %     'DCMicrogrid:NoiseScale','sigma must be a finite 2-by-2 factor.');
 
             for i = 1:obj.N
                 w = randn(length(t_noise), 2)*sigma;
+                % REVIEW PROPOSAL DATA-08 (REPLACE): if the caller supplies a
+                % covariance matrix instead, use its Cholesky factor.
+                % noiseFactor = chol(sigma,'lower');
+                % w = randn(length(t_noise),2)*noiseFactor';
                 obj.DGs(i).noise.t = t_noise;
                 obj.DGs(i).noise.w = w;
             end
@@ -653,25 +749,87 @@ classdef DCMicrogrid < handle
         
 
 
-        function draw(obj, ax)
+        function draw(obj, ax, varargin)
 
             if nargin < 2 || isempty(ax), ax = gca; end
-            cla(ax); hold(ax, 'on'); axis(ax, 'equal');
 
-            obj.drawComm(ax);
+            parser = inputParser;
+            parser.FunctionName = 'DCMicrogrid.draw';
+            addParameter(parser,'Title','DC Microgrid Topology', ...
+                @(value)ischar(value) || (isstring(value) && isscalar(value)));
+            addParameter(parser,'ShowCommunication',true, ...
+                @(value)islogical(value) && isscalar(value));
+            addParameter(parser,'ShowLineCurrents',false, ...
+                @(value)islogical(value) && isscalar(value));
+            addParameter(parser,'ShowLineLabels',true, ...
+                @(value)islogical(value) && isscalar(value));
+            addParameter(parser,'ShowNodeLabels',true, ...
+                @(value)islogical(value) && isscalar(value));
+            addParameter(parser,'FontSize',8, ...
+                @(value)isnumeric(value) && isscalar(value) && value>0);
+            parse(parser,varargin{:});
+            options = parser.Results;
 
-            % Lines first
+            cla(ax); hold(ax,'on'); axis(ax,'equal');
+            set(ax,'Color','w','XColor',[0.25 0.25 0.25], ...
+                'YColor',[0.25 0.25 0.25]);
+
+            positions = vertcat(obj.DGs.pos);
+            networkCenter = mean(positions,1);
+            xSpan = max(max(positions(:,1))-min(positions(:,1)),1);
+            ySpan = max(max(positions(:,2))-min(positions(:,2)),1);
+
+            voltage = zeros(obj.N,1);
+            for k = 1:obj.N
+                voltage(k) = obj.DGs(k).x(1);
+            end
+            networkCurrent = obj.YBar*voltage;
+
+            % Draw physical lines first so communication links remain visible.
             for e = 1:obj.M
                 i = obj.Lines(e).i; j = obj.Lines(e).j;
-                obj.Lines(e).draw(ax, obj.DGs(i).pos, obj.DGs(j).pos);
+                lineCurrent = obj.Lines(e).current(voltage(i),voltage(j));
+                obj.Lines(e).draw(ax,obj.DGs(i).pos,obj.DGs(j).pos, ...
+                    'ShowLabel',options.ShowLineLabels, ...
+                    'ShowCurrent',options.ShowLineCurrents, ...
+                    'LineCurrent',lineCurrent,'FontSize',options.FontSize);
             end
-            % DGs on top
+
+            if options.ShowCommunication
+                obj.drawComm(ax);
+            end
+
             for k = 1:obj.N
-                obj.DGs(k).draw(ax);
+                if positions(k,2) >= networkCenter(2)+0.25*ySpan
+                    labelPosition = positions(k,:)+[0,0.2];
+                    horizontalAlignment = 'center';
+                    verticalAlignment = 'bottom';
+                elseif positions(k,1) <= networkCenter(1)
+                    labelPosition = positions(k,:)+[-0.16,-0.14];
+                    horizontalAlignment = 'right';
+                    verticalAlignment = 'top';
+                else
+                    labelPosition = positions(k,:)+[0.16,-0.14];
+                    horizontalAlignment = 'left';
+                    verticalAlignment = 'top';
+                end
+                obj.DGs(k).draw(ax,'NetworkCurrent',networkCurrent(k), ...
+                    'ShowLabels',options.ShowNodeLabels, ...
+                    'FontSize',options.FontSize, ...
+                    'LabelPosition',labelPosition, ...
+                    'HorizontalAlignment',horizontalAlignment, ...
+                    'VerticalAlignment',verticalAlignment);
             end
-            grid(ax, 'on'); xlabel(ax,'x'); ylabel(ax,'y');
-            title(ax, 'DC Microgrid Topology');
-            set(ax,'Visible','off') 
+
+            xlim(ax,[min(positions(:,1))-max(1.6,0.45*xSpan), ...
+                max(positions(:,1))+max(1.6,0.45*xSpan)]);
+            ylim(ax,[min(positions(:,2))-max(0.9,0.3*ySpan), ...
+                max(positions(:,2))+max(0.9,0.3*ySpan)]);
+
+            title(ax,char(options.Title),'Color',[0.08 0.18 0.28], ...
+                'FontWeight','bold');
+            set(ax,'Visible','off');
+            ax.Title.Visible = 'on';
 
         end
 
@@ -688,6 +846,10 @@ classdef DCMicrogrid < handle
                          
                         pi = obj.DGs(i).pos; 
                         pj = obj.DGs(j).pos;
+
+                        % REVIEW PROPOSAL DRAW-01 (ADD): protect the
+                        % normalization below if two DG positions coincide.
+                        % if norm(pj-pi) <= eps, continue; end
                         
                         % Perpendicular midpoint bulge
                         dline = (pj - pi)/norm(pj - pi);
@@ -843,11 +1005,21 @@ classdef DCMicrogrid < handle
             % Epsilon bounds
             constr = [constr, epsV >= 0.8, epsV <= 1.2];
             constr = [constr, epsI >= 0, epsI <= 0.98];
+
+            % REVIEW PROPOSAL SS-01 (ADD): Eq. (45) bounds the equilibrium
+            % exported current and VSC voltage command as well as the state.
+            % deltaI = 1.0; deltaVt = 0.20;
+            % constr = [constr, -deltaI.*Ir <= I, I <= deltaI.*Ir];
+            % constr = [constr, (1-deltaVt).*Vr <= u, u <= (1+deltaVt).*Vr];
         
             % Mild input regularization
             % us_prev = mats.u_s; if isempty(us_prev), us_prev = zeros(N,1); end
         
             objFun = norm(epsV - 1, 2)^2 + epsI;
+            % REVIEW PROPOSAL SS-02 (ADD): uncomment to override the active
+            % objective, which currently drives epsI toward zero.
+            % objFun = norm(epsV-1,2)^2 + (epsI-1)^2 + ...
+            %          1e-4*norm((u-Vr)./Vr,2)^2;
         
             ops = sdpsettings('solver','mosek','verbose',0);
             info = optimize(constr, objFun, ops);
@@ -887,6 +1059,12 @@ classdef DCMicrogrid < handle
             ss.epsV'
 
             obj.ss = ss;
+
+            % REVIEW PROPOSAL SS-03 (ADD): verify Eqs. (46)-(47) numerically.
+            % ssResidual = Am*ss.x_ss + [Em Bm]*[ss.I_ss;ss.u_s] + Em*wBar;
+            % lineResidual = ss.I_ss-YBar*ss.V_ss;
+            % assert(norm(ssResidual,inf)<=1e-7 && norm(lineResidual,inf)<=1e-7, ...
+            %     'DCMicrogrid:SteadyStateResidual','Steady-state equations failed.');
 
             % % % Verify physics at solution (should be ~zero)
             % Am = obj.A; Em = obj.E; Bm = obj.B; YB = obj.YBar;
@@ -956,6 +1134,10 @@ classdef DCMicrogrid < handle
                 mag = 2;
                 K_G = K_G + K_G.*(mag*(2*rand(size(K_G))-1));
             end
+            % REVIEW PROPOSAL GSC-01 (ADD): uncomment to disable gain
+            % corruption. Collect persistently exciting additive input data
+            % instead of perturbing a stabilizing gain by as much as 200%.
+            % K_G = DBar'*K;
             obj.K = K_G;
 
             % eig(A + BBar*K)
@@ -973,6 +1155,9 @@ classdef DCMicrogrid < handle
             Adj = zeros(N);
             K = obj.K;
             maxK = max(max(abs(K)));
+            % REVIEW PROPOSAL GSC-02 (ADD): avoid classifying every zero block
+            % as an active edge when the entire recovered gain is zero.
+            % if maxK==0, Adj=zeros(N); obj.commAdj=Adj; return; end
             for i = 1:N
                 for j = 1:N
                     K_ij = K(i, 2*j-1:2*j);
@@ -983,6 +1168,11 @@ classdef DCMicrogrid < handle
                     end
                 end
             end
+
+            % REVIEW PROPOSAL GSC-03 (DESIGN): thresholding changes the gain
+            % after optimization, so the LMI certificate no longer applies.
+            % Re-evaluate stability/dissipativity with this pruned K, or impose
+            % the desired block sparsity inside the optimization and re-solve.
 
             obj.K = K;
             obj.commAdj = Adj;
@@ -1001,6 +1191,10 @@ classdef DCMicrogrid < handle
                 if oi.problem~=0
                     warning('Local design failed at DG %d: %s', i, oi.info);
                 end
+                % REVIEW PROPOSAL MB-G01 (ADD): do not continue to divisions
+                % by nu_i or to a global certificate after a local failure.
+                % assert(oi.problem==0, 'DCMicrogrid:LocalMBFailure', ...
+                %     'Model-based local design failed at DG %d.',i);
             end
 
             YBar = obj.YBar
@@ -1086,6 +1280,9 @@ classdef DCMicrogrid < handle
             con1 = [P >= epsilon*eye(N)];
             limitVal = 10;
             con1 = [con1, -P*limitVal*ones(size(KHat)) <= KHat, KHat <= P*limitVal*ones(size(KHat))];
+            % REVIEW PROPOSAL MB-G02 (ADD): if using -alpha*trace(P) as in
+            % Remark 6, add an upper bound to prevent unbounded scaling.
+            % pMax = 1e3; con1 = [con1, P <= pMax*eye(N)];
 
             % Main LMI
             L_uy = X_11*BBar*K;
@@ -1099,11 +1296,20 @@ classdef DCMicrogrid < handle
 
             con2 = (W - epsilonSlack) >= epsilon*eye(W_dim); % The real one
             con2 = [con2, epsilonSlack >= -1*eye(W_dim), epsilonSlack <= 1*eye(W_dim)];
+            % REVIEW PROPOSAL MB-G03 (ADD, recommended): this hard constraint
+            % restores the Proposition-4 certificate. Negative epsilonSlack
+            % currently permits an infeasible W to be reported as success.
+            % con2 = [con2, W >= epsilon*eye(W_dim)];
                       
             % Total Cost and Constraints
             if isSoft
                 cons = [con0, con1, con2]; % Without the hard graph constraint con7
                 costFun = 1*costFun0 + 0*gammaSq + 1*trace(P) + 0*epsilon + 1*norm(epsilonSlack,1); 
+                % REVIEW PROPOSAL MB-G04 (REPLACE): align the objective with
+                % Prop. 4/Remark 6 and optimize the performance certificate.
+                % alphaP=1e-3; betaGamma=1;
+                % costFun = costFun0-alphaP*trace(P)+betaGamma*gammaSq + ...
+                %           norm(diag(epsilonSlack),1);
                 % epsilonslackcoef is a Key point check
             end
             
@@ -1168,6 +1374,10 @@ classdef DCMicrogrid < handle
                 if oi.problem~=0
                     warning('Local design failed at DG %d: %s', i, oi.info);
                 end
+                % REVIEW PROPOSAL DD-G01 (ADD): Proposition 8 requires every
+                % local Proposition-7 certificate to succeed.
+                % assert(oi.problem==0, 'DCMicrogrid:LocalDDFailure', ...
+                %     'Data-driven local design failed at DG %d.',i);
             end
             
             %--------------------------------------------------------------
@@ -1186,6 +1396,10 @@ classdef DCMicrogrid < handle
 
             scaleQ = max(1, max(abs(QBar_w(:))));   % e.g. ~1e4 for your case
             QBar_w = QBar_w / scaleQ;
+            % REVIEW PROPOSAL DD-G02 (DESIGN): assemble exactly the normalized
+            % per-DG QBar_w blocks used by the local designs. A new aggregate
+            % scaling is not equivalent when one global lambda multiplies all
+            % subsystem blocks with different original magnitudes.
 
 
             %--------------------------------------------------------------
@@ -1194,6 +1408,9 @@ classdef DCMicrogrid < handle
             isSoft     = 1;
             normType   = 1;
             maxCostVal = 1e-3; %%%% check
+            % REVIEW PROPOSAL DD-G03 (DESIGN): the model-based budget is 1,
+            % while the data-driven budget is 1e-3. Use the same dimensionless
+            % communication budget before attributing a difference to data.
         
             %--------------------------------------------------------------
             % Basic identities
@@ -1342,21 +1559,38 @@ classdef DCMicrogrid < handle
         
             % Communication budget
             cons = [cons, costFun0 <= maxCostVal, gammaSq >= epsilon, epsilon >= 0.001, gammaSq<=1e-3]; %%%% check
+            % REVIEW PROPOSAL DD-G04 (REPLACE): the active bounds force both
+            % gammaSq and epsilon to exactly 1e-3. Decouple feasibility margin
+            % from performance and normalize before selecting tolerances.
+            % cons = [costFun0<=maxCostVal, gammaSq>=1e-8, ...
+            %         epsilon>=1e-7, epsilon<=1e-3];
         
             % Positivity / slacks 
             cons = [cons, lambda >= 0, epsilonSlack >= -1*eye(W_dim), epsilonSlack <= 1*eye(W_dim)];
         
             % Main Y-dissipativity LMI (data-driven)
             cons = [cons, P >= epsilon*eye(N), W - epsilonSlack >= epsilon*eye(W_dim)];
+            % REVIEW PROPOSAL DD-G05 (ADD, recommended): require the actual
+            % Proposition-8 LMI, not only its softened version.
+            % cons = [cons, W >= epsilon*eye(W_dim)];
         
             % Structural coupling constraint: DᵀK = P Ȳ Dᵀ
             cons = [cons, 1e6*(D'*K - P*YBar*D') == zeros(size(D'*K))]; %%%% check
+            % REVIEW PROPOSAL DD-G06 (REPLACE): remove the 1e6 equality
+            % multiplier. It is algebraically redundant and harms scaling.
+            % cons = [cons, D'*K == P*YBar*D'];
         
             %--------------------------------------------------------------
             % Objective: sparse K, small gamma, small λ and P
             %--------------------------------------------------------------
             if isSoft
                 costFun = 1*costFun0 + 1*gammaSq + 1*trace(P) + 1*epsilon + 1*norm(epsilonSlack,1); %%%% check
+                % REVIEW PROPOSAL DD-G07 (REPLACE): after adding a P upper
+                % bound, use the Prop. 8 objective direction and maximize a
+                % bounded margin rather than minimizing epsilon.
+                % alphaP=1e-3; betaGamma=1; betaMargin=1e-3;
+                % costFun = costFun0-alphaP*trace(P)+betaGamma*gammaSq ...
+                %     -betaMargin*epsilon+norm(diag(epsilonSlack),1);
             else
                 % cons = [cons, ...]
                 % costFun = 1*costFun0 + 1*gammaSq + 1e3*lambda + 1*trace(P);
@@ -1426,6 +1660,13 @@ classdef DCMicrogrid < handle
 
 
         function [k_crit, minor_crit, minors] = criticalLeadingMinor(obj, M)
+
+            % REVIEW PROPOSAL NUM-01 (REPLACE): determinants of leading
+            % minors are poorly scaled and the current callers incorrectly
+            % treat a positive minor far from zero as an error. Prefer:
+            % minEigenvalue = min(eig((value(M)+value(M)')/2));
+            % assert(minEigenvalue >= -1e-7, ...
+            %     'DCMicrogrid:LMIViolation','LMI minimum eigenvalue is negative.');
             
             M;
             n = size(M,1);
