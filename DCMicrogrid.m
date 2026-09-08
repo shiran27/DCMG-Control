@@ -505,8 +505,8 @@ classdef DCMicrogrid < handle
                 % REVIEW PROPOSAL DATA-02 (REPLACE): the active residual uses
                 % the supposedly unknown A and BBar. For a simulation-only
                 % check, use the logged disturbance impact instead. The Ts
-                % scaling below is forward-Euler only; exact integration is
-                % preferable when the disturbance is held over the interval.
+                % scaling below is forward-Euler only. The physical line-current
+                % channel is not independently held in the continuous network.
                 % wImpact = Wtilde(:,2*k-1:2*k);
                 % wImpactSampled = Ts*interp1(t,wImpact,tVals,'previous','extrap')';
                 % obj.DGs(k).wTilde = wImpactSampled(:,1:end-1);
@@ -548,8 +548,8 @@ classdef DCMicrogrid < handle
             obj.QBar_w = QBar_w;
             obj.E_perm = [E1; E2; E3];
             
-            % meanAbsDist = mean(meanAbsDistVals);
-            % meanAbsDiscErr = mean(meanAbsDiscEVals);
+            % REVIEW PROPOSAL DATA-09 (ADD): assign `out` with Ts, ranks,
+            % residual statistics, QMI scales, and the selected model contract.
 
         end
 
@@ -570,10 +570,10 @@ classdef DCMicrogrid < handle
             epsilon = sdpvar(1, 1, 'full');
 
             % Construct the stacked data matrix
-            Phi = [I_n; W'];    % size: (T + nW*T) x T
+            Phi = [I_n; W'];    % size: (nW + T) x nW
             
             % QMI constraint
-            M = Phi' * Q_w * Phi;    % size: T x T
+            M = Phi' * Q_w * Phi;    % size: nW x nW
             
             Constraints = [M >= epsilon*eye(size(M)), epsilon >= 1e-3, Q_I >= epsilon*eye(size(Q_I))];
             
@@ -590,9 +590,9 @@ classdef DCMicrogrid < handle
             
             Qw_val = value(Q_w);
 
-            % REVIEW PROPOSAL DATA-04 (ADD): a bound fitted to the exact
-            % observed realization has no reserve. Inflate its state block or,
-            % preferably, supply a physical bound selected before collecting data.
+            % REVIEW PROPOSAL DATA-04 (ADD): this fit has only a fixed 1e-3
+            % post-hoc reserve. Prefer a physical bound selected before data.
+            % If retained, scale its reserve to normalized disturbance units.
             % disturbanceMargin = 1.20;
             % Qw_val(1:nW,1:nW) = disturbanceMargin^2*Qw_val(1:nW,1:nW);
 
@@ -1396,10 +1396,10 @@ classdef DCMicrogrid < handle
 
             scaleQ = max(1, max(abs(QBar_w(:))));   % e.g. ~1e4 for your case
             QBar_w = QBar_w / scaleQ;
-            % REVIEW PROPOSAL DD-G02 (DESIGN): assemble exactly the normalized
-            % per-DG QBar_w blocks used by the local designs. A new aggregate
-            % scaling is not equivalent when one global lambda multiplies all
-            % subsystem blocks with different original magnitudes.
+            % REVIEW PROPOSAL DD-G02 (CHECK): this is the correct scaling order:
+            % assemble raw local blocks, then apply one common positive scale.
+            % Do not use independently normalized local blocks with the single
+            % global multiplier; store scaleQ in the returned diagnostics.
 
 
             %--------------------------------------------------------------

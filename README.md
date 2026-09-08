@@ -19,10 +19,8 @@ This folder contains the MATLAB implementation used to generate the controller c
 | `output/source/P6_Data_Driven_Co_Design.pdf` | Uploaded 18-page paper used as the primary theory reference. |
 | `output/source/P6_Data_Driven_Co_Design_with_notes.pdf` | Distinct older 16-page annotated paper retained as background. |
 | `output/source/P6.tex` | Uploaded paper TeX source. |
-| `output/review/IMPLEMENTATION_REVIEW_CHECKLIST.md` | Editable implementation-review checklist, prioritized by criticality and revision effort. |
-| `output/review/APPLICATION_SPECIFIC_THEORY_CODE_CROSS_REFERENCE.md` | DCMG-specific equations, dimensions, controller transformations, data contracts, and function acceptance checks. |
-| `output/review/*.pdf` | Print-ready PDF counterparts colocated with both review Markdown documents. |
-| `output/` | Review documents under `review/` and uploaded paper/background inputs under `source/`; no MATLAB runtime files are duplicated there. |
+| Paper repository [`Revision/`](https://github.com/shiran27/Data_Driven_Design_ACC2025/tree/main/Revision) | The implementation-review checklist and DCMG theory/code cross-reference, each in editable Markdown and print-ready PDF form, are maintained with the Overleaf/GitHub paper. |
+| `output/` | Uploaded paper/background inputs remain under `source/`; implementation-derived revision documents are maintained in the paper repository. |
 
 ## Function reference
 

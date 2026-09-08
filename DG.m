@@ -367,10 +367,10 @@ classdef DG < handle
             QBar_w  = 0.5*(obj.QBar_w + obj.QBar_w');
             scaleQ = max(1, max(abs(QBar_w(:))));   % e.g. ~1e4
             QBar_w = QBar_w / scaleQ;
-            % REVIEW PROPOSAL DD-L02 (DESIGN): store scaleQ with QBar_w and
-            % use the same per-DG normalization in the aggregate Prop. 8 QMI.
-            % Independent local scaling followed by one global scaling changes
-            % the relative block weights when Prop. 8 uses a single lambda.
+            % REVIEW PROPOSAL DD-L02 (ADD): store scaleQ in diagnostics. This
+            % positive local scaling is valid because lambda1/lambda2 absorb it.
+            % Do not reuse independently scaled local blocks in Proposition 8;
+            % assemble raw blocks first, then apply one common aggregate scale.
 
             % Basic matrices
             I_n  = eye(n);

@@ -11,5 +11,7 @@ paper-to-implementation review.
 
 The TeX file references figure, result, bibliography, and style dependencies
 that were not included with the upload. No MATLAB implementation files belong
-in this directory. The derived review documents and their PDFs are under
-`../review/`.
+in this directory. The derived review documents and their PDFs are maintained
+with the Overleaf/GitHub paper under its
+[`Revision/`](https://github.com/shiran27/Data_Driven_Design_ACC2025/tree/main/Revision)
+directory.
