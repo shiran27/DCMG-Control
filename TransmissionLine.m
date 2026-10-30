@@ -8,13 +8,17 @@ classdef TransmissionLine < handle
         id      (1,1) double
         i       (1,1) double    % endpoint i
         j       (1,1) double    % endpoint j
-        R       (1,1) double = 1.0   % Ohm
-        g       (1,1) double = 1.0   % S (filled in ctor)
+        R       (1,1) double {mustBePositive,mustBeFinite} = 1.0   % Ohm
         color   (1,3) double = [0.3 0.3 0.3];
         width   (1,1) double = 1.6
     end
 
+    properties (Dependent)
+        g % conductance always follows the physical resistance
+    end
+
     methods
+        function value=get.g(obj), value=1/obj.R; end
         function obj = TransmissionLine(id, i, j, R)
             % REVIEW PROPOSAL LINE-01 (ADD): validate the physical line data.
             % validateattributes(id, {'numeric'}, {'scalar','integer','positive','finite'});
@@ -24,11 +28,14 @@ classdef TransmissionLine < handle
             % assert(i ~= j, 'TransmissionLine:SelfLoop', ...
             %     'A physical transmission line must connect two distinct DGs.');
 
+            validateattributes(i,{'numeric'},{'scalar','integer','positive','finite'});
+            validateattributes(j,{'numeric'},{'scalar','integer','positive','finite'});
+            assert(i~=j,'TransmissionLine:SelfLoop','Endpoints must differ.');
             obj.id = id; 
             obj.i = i; 
             obj.j = j;
             obj.R = R;
-            obj.g = 1/R;
+
 
             % REVIEW PROPOSAL LINE-02 (DESIGN): R and g are both public and
             % can become inconsistent after construction. Prefer making g a

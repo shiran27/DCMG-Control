@@ -1,7 +1,10 @@
 # Output Directory
 
 This directory contains the uploaded paper source and background material used
-for implementation review.
+for implementation review. These uploaded snapshots are historical inputs;
+the current manuscript is maintained in the paper repository. The current
+MATLAB comparison artifacts are in `Results/Regenerated` and
+`Results/LiteraturePI`, with reproduction instructions in the project README.
 
 - `source/` contains uploaded paper TeX and reference PDFs.
 

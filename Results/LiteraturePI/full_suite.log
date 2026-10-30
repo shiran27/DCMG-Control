@@ -1,0 +1,109 @@
+DCMG SDP solver: sedumi
+Integral-data checks: 6 DGs, 400 transitions each.
+rho=0.15, DD=0, problem=0, gamma=6.72052, directed links=0
+rho=0.15, DD=1, problem=0, gamma=6.72819, directed links=0
+rho=0.2, DD=0, problem=0, gamma=5.08724, directed links=0
+rho=0.2, DD=1, problem=0, gamma=5.09752, directed links=0
+rho=0.25, DD=0, problem=1, Infeasible problem (<a href="yalmip.github.io/debugginginfeasible">learn to debug</a>) (SeDuMi)
+rho=0.25, DD=1, problem=1, Infeasible problem (<a href="yalmip.github.io/debugginginfeasible">learn to debug</a>) (SeDuMi)
+rho=0.28, DD=0, problem=1, Infeasible problem (<a href="yalmip.github.io/debugginginfeasible">learn to debug</a>) (SeDuMi)
+rho=0.28, DD=1, problem=1, Infeasible problem (<a href="yalmip.github.io/debugginginfeasible">learn to debug</a>) (SeDuMi)
+              Method               DirectedLinks    Gamma     MaxRealPole    SettlingMs    FinalErrorRatio    DisturbanceVoltageRMS    DisturbanceSharingRMS    PeakCommandDeviation    EmpiricalNoiseGain    OriginalLocalMinEig    OriginalGlobalMinEig
+    ___________________________    _____________    ______    ___________    __________    _______________    _____________________    _____________________    ____________________    __________________    ___________________    ____________________
+
+    "MB stabilizing"                    30             NaN      -408.93         5.2          2.4925e-23             0.074966                   0.01763                0.31548                 0.2615                     NaN                   NaN       
+    "MB co-design"                       0          5.0872      -315.55         3.3          1.8173e-19              0.15998                  0.003387                 4.0886                0.13715              3.0601e-08               0.51745       
+    "DD local + known-B global"          0          5.0975      -331.97         3.2          4.6334e-21              0.15204                 0.0033641                 3.9278                0.13745                 0.00119                0.6984       
+    "Conventional droop (5%)"            0             NaN      -213.63         6.3          1.6809e-13              0.12301                  0.016627                0.21325                0.30862                     NaN                   NaN       
+
+Existing ODE vs exact propagation: 4.497e-10; held-command check: 3.993e-12
+Accepted results saved in /Users/shiranthamacbook/Library/CloudStorage/OneDrive-stevens.edu/Research/Papers/P6_DataDriven/MatlabCodesDataDriven/DCMG-Control/Results/Regenerated
+Literature PI: kp=2, kd=0.5, fraction=0.25, settle=7.4 ms (60/125 accepted).
+Literature PI: ODE error 2.270e-11, absolute-law error 2.842e-14, checks passed=1.
+                Method                SettlingMs    DisturbanceVoltageRMS    DisturbanceSharingRMS    DisturbanceCommandRMS    NominalPeakCommand    LoadStepTailVoltageRMS    LoadStepTailSharingRMS    MaxRealPole    DirectedLinks    EmpiricalNoiseGain    NominalFinalRatio
+    ______________________________    __________    _____________________    _____________________    _____________________    __________________    ______________________    ______________________    ___________    _____________    __________________    _________________
+
+    "MB stabilizing"                     5.2              0.074966                   0.01763                0.071271                0.31548                   0.20105                 0.019142             -408.93           30                0.2615             2.4925e-23    
+    "MB co-design"                       3.3               0.15998                  0.003387                 0.26108                 4.0886                    1.1379                 0.024449             -315.55            0               0.13715             1.8173e-19    
+    "DD local + known-B global"          3.2               0.15204                 0.0033641                 0.25367                 3.9278                     1.087                 0.024579             -331.97            0               0.13745             4.6334e-21    
+    "Conventional droop (5%)"            6.3               0.12301                  0.016627                0.041631                0.21325                  0.098267                  0.01184             -213.63            0               0.30862             1.6809e-13    
+    "Passivity PI (Nahata et al.)"       7.4              0.048385                  0.008203                  0.1463                  3.175                6.8025e-06                 0.019941             -67.543            0                0.2696             8.0695e-06    
+
+Verified literature PI comparison saved in /Users/shiranthamacbook/Library/CloudStorage/OneDrive-stevens.edu/Research/Papers/P6_DataDriven/MatlabCodesDataDriven/DCMG-Control/Results/LiteraturePI
+Serialized certificates, data, failure rollback, and topology checks passed.
+    DroopPercent    MaxRealPole    SettlingMs    DisturbanceVoltageRMS    DisturbanceSharingRMS
+    ____________    ___________    __________    _____________________    _____________________
+
+          1            -138.6         7.2                0.1412                 0.025777       
+          3           -177.65         6.7               0.13062                 0.020192       
+          5           -213.63         6.3               0.12301                 0.016627       
+         10           -292.68         5.7               0.10893                 0.011576       
+
+Conventional droop contract and all declared sensitivity cases passed.
+All five methods, source generations, trajectories, and CSV values are consistent.
+
+MODEL-BASED DCMG SIMULATOR BASELINE
+Repository: /Users/shiranthamacbook/Library/CloudStorage/OneDrive-stevens.edu/Research/Papers/P6_DataDriven/MatlabCodesDataDriven/DCMG-Control
+Final time: 0.08 s, output step: 0.0001 s
+
+--- Open loop ---
+status=PASS, max Re(pole)=-8.156e+01, final/error ratio=2.884e-03
+equilibrium residual=4.252e-11, command saturation=0, line-current limiting=0
+
+--- MB stabilizing ---
+status=PASS, max Re(pole)=-3.957e+02, final/error ratio=4.795e-08
+equilibrium residual=4.252e-11, command saturation=0, line-current limiting=0
+
+--- LQR ---
+status=PASS, max Re(pole)=-6.675e+02, final/error ratio=6.050e-08
+equilibrium residual=4.252e-11, command saturation=0, line-current limiting=0
+
+--- MB dissipative ---
+status=PASS, max Re(pole)=-1.562e+02, final/error ratio=1.354e-06
+equilibrium residual=4.252e-11, command saturation=0, line-current limiting=0
+
+         Method         Status    DesignProblem    EquilibriumResidualInf    MaxRealPole    FinalRatio    MaxVoltageErrorV    MaxCommandDeviationV    CommandSaturationCount    CurrentClippingCount
+    ________________    ______    _____________    ______________________    ___________    __________    ________________    ____________________    ______________________    ____________________
+
+    "Open loop"         "PASS"          0                4.2519e-11            -81.563       0.0028845         1.1999                     0                     0                        0          
+    "MB stabilizing"    "PASS"          0                4.2519e-11            -395.65       4.795e-08         1.1999               0.25354                     0                        0          
+    "LQR"               "PASS"          0                4.2519e-11            -667.51      6.0499e-08         1.1999                3.6203                     0                        0          
+    "MB dissipative"    "PASS"          0                4.2519e-11            -156.23      1.3544e-06         1.1999                1.5401                     0                        0          
+
+All model-based simulator baseline cases passed.
+
+P6 MODEL-BASED PAPER-CONFIGURATION TEST
+Physical benchmark: 6 DGs, 7 lines, final time 0.05 s
+Archived source: Git revision 6a0091d and archive/data/matlab.mat
+
+--- Current MB stabilizing ---
+status=PASS, max Re(pole)=-4.089e+02, final/error ratio=1.891e-09
+off-diagonal directed links=30, equilibrium residual=6.366e-11
+
+--- Archived paper MB dissipative ---
+status=PASS, max Re(pole)=-2.119e+02, final/error ratio=7.639e-06
+off-diagonal directed links=15, equilibrium residual=6.366e-11
+
+--- Current MB dissipative ---
+status=WARN, max Re(pole)=-3.155e+02, final/error ratio=7.416e-08
+off-diagonal directed links=0, equilibrium residual=6.366e-11
+
+                Method                 Status    DesignProblem    EquilibriumResidualInf    MaxRealPole    FinalRatio    OffDiagonalDirectedLinks    ReferenceTopologyMatch    ReferenceGainDistance
+    _______________________________    ______    _____________    ______________________    ___________    __________    ________________________    ______________________    _____________________
+
+    "Current MB stabilizing"           "PASS"          0                6.3665e-11            -408.93      1.8915e-09               30                       true                         NaN       
+    "Archived paper MB dissipative"    "PASS"          0                6.3665e-11             -211.9      7.6393e-06               15                       true                           0       
+    "Current MB dissipative"           "WARN"          0                6.3665e-11            -315.55      7.4161e-08                0                       false                    0.89655       
+
+All paper-configuration cases completed without failure.
+All regression gates passed; archived topology differences remain labeled warnings.
+Complete five-controller comparison and all regression checks passed.
+                Method                SettlingMs    DisturbanceVoltageRMS    DisturbanceSharingRMS    DisturbanceCommandRMS    NominalPeakCommand    LoadStepTailVoltageRMS    LoadStepTailSharingRMS    MaxRealPole    DirectedLinks    EmpiricalNoiseGain    NominalFinalRatio
+    ______________________________    __________    _____________________    _____________________    _____________________    __________________    ______________________    ______________________    ___________    _____________    __________________    _________________
+
+    "MB stabilizing"                     5.2              0.074966                   0.01763                0.071271                0.31548                   0.20105                 0.019142             -408.93           30                0.2615             2.4925e-23    
+    "MB co-design"                       3.3               0.15998                  0.003387                 0.26108                 4.0886                    1.1379                 0.024449             -315.55            0               0.13715             1.8173e-19    
+    "DD local + known-B global"          3.2               0.15204                 0.0033641                 0.25367                 3.9278                     1.087                 0.024579             -331.97            0               0.13745             4.6334e-21    
+    "Conventional droop (5%)"            6.3               0.12301                  0.016627                0.041631                0.21325                  0.098267                  0.01184             -213.63            0               0.30862             1.6809e-13    
+    "Passivity PI (Nahata et al.)"       7.4              0.048385                  0.008203                  0.1463                  3.175                6.8025e-06                 0.019941             -67.543            0                0.2696             8.0695e-06    
+

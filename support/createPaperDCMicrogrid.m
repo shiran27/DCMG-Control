@@ -15,6 +15,7 @@ arguments
     options.FinalTime (1,1) double {mustBePositive,mustBeFinite} = 0.05
     options.NoiseStep (1,1) double {mustBePositive,mustBeFinite} = 1e-5
     options.NoiseFactor (2,2) double = zeros(2)
+    options.LegacyEquilibrium (1,1) logical = true
     options.SetInitialState (1,1) logical = true
 end
 
@@ -71,7 +72,7 @@ end
 
 net = DCMicrogrid(DGs,[lineCells{:}]);
 net.buildSystemMatrices();
-steadyState = net.solveSteadyState();
+steadyState = net.solveSteadyState(struct('LegacyObjective',options.LegacyEquilibrium));
 assert(steadyState.problem==0,'DCMG:PaperSteadyStateFailure', ...
     'The recovered paper benchmark steady-state design failed: %s', ...
     steadyState.info);

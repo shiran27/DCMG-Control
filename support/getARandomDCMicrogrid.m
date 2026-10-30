@@ -93,6 +93,7 @@ function net = getARandomDCMicrogrid(N)
     
     % Grow radius until connected (or until it’s obviously enough)
     maxTries = 10;
+    comps = 1:N;
     % REVIEW PROPOSAL MAIN-04 (ADD): prevents an undefined comps variable if
     % all attempts produce zero edges.
     % comps = 1:N;

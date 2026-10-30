@@ -1,7 +1,9 @@
 # Source And Background Material
 
 This directory contains the uploaded non-code paper inputs used for the
-paper-to-implementation review.
+paper-to-implementation review. They are retained input snapshots, not the
+current manuscript or comparison results. Use the paper repository's
+`Revision/Paper_with_Regenerated_Results.pdf` for the current compiled paper.
 
 | File | Description |
 | --- | --- |

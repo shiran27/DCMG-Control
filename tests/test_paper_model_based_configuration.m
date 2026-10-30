@@ -219,7 +219,7 @@ switch methodKey
         [~,~,out] = net.codesign_MB_DRC(threshold);
         design.Problem = out.problem;
         design.Message = string(out.info)+ ...
-            "; current implementation uses the active softened global LMI";
+            "; current implementation uses verified hard local/global LMIs";
         assert(out.problem==0,'DCMG:PaperMBDRCFailure', ...
             'Current model-based dissipative design failed: %s',out.info);
 

@@ -47,6 +47,7 @@ function saveFigureHighRes(baseName, varargin)
     baseName = char(baseName);
     % REVIEW PROPOSAL MAIN-08 (ADD): allow a clean checkout to save figures.
     % if ~isfolder('Results'), mkdir('Results'); end
+    if ~isfolder('Results'), mkdir('Results'); end
     pngName  = ['Results/', baseName '.png'];
     figName  = ['Results/', baseName '.fig'];
 

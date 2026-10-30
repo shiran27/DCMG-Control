@@ -16,3 +16,8 @@ benchmark, but the regression test does not load it at runtime.
 
 None of these files should be added to the MATLAB path. The exact paper
 constants are exposed through `support/createPaperDCMicrogrid.m`.
+
+`legacy/main_before_results_20260910.mlx` preserves the Live Script before the
+verified integral-data results workflow. Its old DD data/global formulations are
+not certificate-producing runtime paths; the new `main.mlx` calls
+`run_all_paper_results` to rebuild the proposed methods and both literature baselines.

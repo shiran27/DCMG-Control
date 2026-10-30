@@ -28,7 +28,7 @@ clc;
 rng(17,'twister');
 
 repoRoot = fileparts(fileparts(mfilename('fullpath')));
-addpath(repoRoot);
+addpath(repoRoot,fullfile(repoRoot,'support'));
 
 methodKeys = ["open-loop","mb-stabilizing","lqr","mb-dissipative"];
 methodLabels = ["Open loop","MB stabilizing","LQR","MB dissipative"];
@@ -278,6 +278,8 @@ switch methodKey
             max(real(lqrPoles)));
 
     case "mb-dissipative"
+        % The denser 3-DG physical ring needs a milder hard local supply target.
+        net.DesignOptions.Rho=0.08;
         [~,~,out] = net.codesign_MB_DRC(0);
         design.Problem = out.problem;
         design.Message = string(out.info);

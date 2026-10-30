@@ -1,0 +1,20 @@
+DCMG SDP solver: sedumi
+Integral-data checks: 6 DGs, 400 transitions each.
+rho=0.15, DD=0, problem=0, gamma=6.72052, directed links=0
+rho=0.15, DD=1, problem=0, gamma=6.72819, directed links=0
+rho=0.2, DD=0, problem=0, gamma=5.08724, directed links=0
+rho=0.2, DD=1, problem=0, gamma=5.09752, directed links=0
+rho=0.25, DD=0, problem=1, Infeasible problem (<a href="yalmip.github.io/debugginginfeasible">learn to debug</a>) (SeDuMi)
+rho=0.25, DD=1, problem=1, Infeasible problem (<a href="yalmip.github.io/debugginginfeasible">learn to debug</a>) (SeDuMi)
+rho=0.28, DD=0, problem=1, Infeasible problem (<a href="yalmip.github.io/debugginginfeasible">learn to debug</a>) (SeDuMi)
+rho=0.28, DD=1, problem=1, Infeasible problem (<a href="yalmip.github.io/debugginginfeasible">learn to debug</a>) (SeDuMi)
+              Method               DirectedLinks    Gamma     MaxRealPole    SettlingMs    FinalErrorRatio    DisturbanceVoltageRMS    DisturbanceSharingRMS    PeakCommandDeviation    EmpiricalNoiseGain    OriginalLocalMinEig    OriginalGlobalMinEig
+    ___________________________    _____________    ______    ___________    __________    _______________    _____________________    _____________________    ____________________    __________________    ___________________    ____________________
+
+    "MB stabilizing"                    30             NaN      -408.93         5.2          2.4925e-23             0.074966                   0.01763                0.31548                 0.2615                     NaN                   NaN       
+    "MB co-design"                       0          5.0872      -315.55         3.3          1.8173e-19              0.15998                  0.003387                 4.0886                0.13715              3.0601e-08               0.51745       
+    "DD local + known-B global"          0          5.0975      -331.97         3.2          4.6334e-21              0.15204                 0.0033641                 3.9278                0.13745                 0.00119                0.6984       
+    "Conventional droop (5%)"            0             NaN      -213.63         6.3          1.6809e-13              0.12301                  0.016627                0.21325                0.30862                     NaN                   NaN       
+
+Existing ODE vs exact propagation: 4.497e-10; held-command check: 3.993e-12
+Accepted results saved in /Users/shiranthamacbook/Library/CloudStorage/OneDrive-stevens.edu/Research/Papers/P6_DataDriven/MatlabCodesDataDriven/DCMG-Control/Results/Regenerated
